@@ -175,18 +175,22 @@ object LiveToolDeclarations {
         properties: Map<String, JSONObject>,
         required: List<String>
     ): JSONObject {
-        val propsObj = JSONObject()
-        properties.forEach { (k, v) -> propsObj.put(k, v) }
-        val params = JSONObject()
-            .put("type", "OBJECT")
-            .put("properties", propsObj)
-        if (required.isNotEmpty()) {
-            params.put("required", JSONArray(required))
-        }
-        return JSONObject()
+        val obj = JSONObject()
             .put("name", name)
             .put("description", description)
-            .put("parameters", params)
+
+        if (properties.isNotEmpty()) {
+            val propsObj = JSONObject()
+            properties.forEach { (k, v) -> propsObj.put(k, v) }
+            val params = JSONObject()
+                .put("type", "OBJECT")
+                .put("properties", propsObj)
+            if (required.isNotEmpty()) {
+                params.put("required", JSONArray(required))
+            }
+            obj.put("parameters", params)
+        }
+        return obj
     }
 
     private fun prop(type: String, description: String): JSONObject =

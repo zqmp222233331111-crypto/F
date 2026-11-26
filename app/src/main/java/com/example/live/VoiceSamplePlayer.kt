@@ -15,9 +15,11 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -51,9 +53,10 @@ class VoiceSamplePlayer {
         _playingVoiceName.value = voiceName
 
         val pcmBuffer = ByteArrayOutputStream()
+        val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
         val request = Request.Builder()
-            .url(GeminiLiveClient.LIVE_WS_URL)
-            .addHeader("x-goog-api-key", apiKey)
+            .url("${GeminiLiveClient.LIVE_WS_URL}?key=$encodedKey")
+            .addHeader("x-goog-api-key", apiKey.trim())
             .build()
 
         activeSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -98,6 +101,14 @@ class VoiceSamplePlayer {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                handleMessage(webSocket, text)
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                handleMessage(webSocket, bytes.utf8())
+            }
+
+            private fun handleMessage(webSocket: WebSocket, text: String) {
                 try {
                     val root = JSONObject(text)
                     if (root.has("setupComplete")) {
@@ -192,14 +203,14 @@ class VoiceSamplePlayer {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(maxOf(minBuf, audioBytes.size))
-                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(maxOf(minBuf, 4800))
+                .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             activeTrack = track
-            track.write(audioBytes, 0, audioBytes.size)
             track.play()
+            track.write(audioBytes, 0, audioBytes.size)
             val durationMs = (audioBytes.size.toLong() * 1000L) / (LiveAudioEngine.OUTPUT_SAMPLE_RATE * 2L)
-            Thread.sleep(durationMs.coerceIn(300L, 10_000L))
+            Thread.sleep(durationMs.coerceIn(300L, 12_000L))
         } catch (_: Exception) {
         } finally {
             if (_playingVoiceName.value == voiceName) {

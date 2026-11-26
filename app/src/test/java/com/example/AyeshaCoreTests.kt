@@ -94,4 +94,33 @@ class AyeshaCoreTests {
         assertEquals(15, LiveToolDeclarations.phoneToolNames.size)
         assertTrue(toolNames.containsAll(LiveToolDeclarations.phoneToolNames))
     }
+
+    @Test
+    fun `custom character preserves 10000 character description in system instruction`() {
+        val longDescription = "ক".repeat(10_000)
+        val customChar = com.example.data.db.CustomCharacterEntity(
+            id = "custom_1",
+            name = "তানিয়া",
+            relationshipRole = "সহকারী",
+            callUserAs = "ভাইয়া",
+            language = "বাংলাদেশি বাংলা",
+            voiceName = "Sulafat",
+            interests = "বই, প্রযুক্তি",
+            description = longDescription,
+            funLevel = 0.6f,
+            emotionLevel = 0.7f,
+            seriousnessLevel = 0.4f,
+            talkativenessLevel = 0.6f
+        )
+        val instruction = SystemInstructionBuilder.build(
+            settings = UserSettings(selectedModeId = AyeshaMode.CUSTOM.id, selectedCustomCharacterId = "custom_1"),
+            mode = AyeshaMode.CUSTOM,
+            customCharacter = customChar,
+            memories = emptyList(),
+            effectiveVoice = VoiceCatalog.findByName("Sulafat")
+        )
+        assertTrue(instruction.contains(longDescription))
+        assertTrue(instruction.contains("তানিয়া"))
+        assertTrue(instruction.contains("ভাইয়া"))
+    }
 }

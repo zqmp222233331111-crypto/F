@@ -196,6 +196,8 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                         onSelectMode = { m, cId -> viewModel.selectMode(m, cId) },
                                         onSetLanguage = { viewModel.setPreferredLanguage(it) },
                                         onSetEmotionLevel = { viewModel.setEmotionLevel(it) },
+                                        onSetVoiceMood = { viewModel.setVoiceMood(it) },
+                                        onSetTurnPauseMs = { viewModel.setTurnPauseMs(it) },
                                         onSaveCustomCharacter = { id, n, r, cu, l, v, i, d, f, e, s, t ->
                                             viewModel.saveCustomCharacter(id, n, r, cu, l, v, i, d, f, e, s, t)
                                         },
@@ -323,7 +325,25 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                             customCharacters = customCharacters,
                                             isKeyVerified = isKeyVerified,
                                             onSelectMode = { m, cId -> viewModel.selectMode(m, cId) },
-                                            onOpenCustomEditor = {
+                                            onSaveCustomCharacter = { id, n, r, cu, l, v, i, d, f, e, s, t, onSaved ->
+                                                viewModel.saveCustomCharacter(
+                                                    existingId = id,
+                                                    name = n,
+                                                    relationshipRole = r,
+                                                    callUserAs = cu,
+                                                    language = l,
+                                                    voiceName = v,
+                                                    interests = i,
+                                                    description = d,
+                                                    funLevel = f,
+                                                    emotionLevel = e,
+                                                    seriousnessLevel = s,
+                                                    talkativenessLevel = t,
+                                                    selectImmediately = true,
+                                                    onSaved = onSaved
+                                                )
+                                            },
+                                            onOpenPersonaSettings = {
                                                 currentTab = MainTab.SETTINGS
                                                 activeSettingsSubPage = SettingsSubPage.PERSONA
                                             },

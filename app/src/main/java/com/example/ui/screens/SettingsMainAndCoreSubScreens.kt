@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -64,6 +66,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.UserSettings
+import com.example.data.VoiceMood
 import com.example.data.db.CustomCharacterEntity
 import com.example.data.db.MemoryEntity
 import com.example.persona.AyeshaMode
@@ -72,6 +75,7 @@ import com.example.persona.VoiceOption
 import com.example.ui.ApiKeyVerifyUiState
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.CustomCharacterEditorDialog
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SubScreenTopBar
 import com.example.ui.components.SystemIntentUtils
@@ -471,6 +475,8 @@ fun SettingsPersonaSubScreen(
     onSelectMode: (AyeshaMode, String?) -> Unit,
     onSetLanguage: (String) -> Unit,
     onSetEmotionLevel: (Float) -> Unit,
+    onSetVoiceMood: (VoiceMood) -> Unit,
+    onSetTurnPauseMs: (Int) -> Unit,
     onSaveCustomCharacter: (
         existingId: String?,
         name: String,
@@ -526,8 +532,37 @@ fun SettingsPersonaSubScreen(
                         value = settings.emotionLevel,
                         onValueChange = onSetEmotionLevel
                     )
+
+                    Spacer(Modifier.height(8.dp))
+                    Text("কণ্ঠের মেজাজ ও ভঙ্গি", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(VoiceMood.entries, key = { it.id }) { mood ->
+                            FilterChip(
+                                selected = settings.voiceMood == mood,
+                                onClick = { onSetVoiceMood(mood) },
+                                label = { Text(mood.labelBn) }
+                            )
+                        }
+                    }
                     Text(
-                        text = "পরিবর্তন পরবর্তী কল থেকে কার্যকর হবে।",
+                        text = settings.voiceMood.descriptionBn,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "কথা শোনার বিরতি: ${settings.turnPauseMs} ms",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Slider(
+                        value = settings.turnPauseMs.toFloat(),
+                        onValueChange = { onSetTurnPauseMs(it.toInt()) },
+                        valueRange = 500f..1800f
+                    )
+                    Text(
+                        text = "বেশি হলে আপনি থেমে শ্বাস নিলেও আয়শা কথা কাটবে না। পরিবর্তন পরবর্তী কল থেকে কার্যকর হবে।",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -623,69 +658,6 @@ fun SettingsPersonaSubScreen(
             }
         )
     }
-}
-
-@Composable
-private fun CustomCharacterEditorDialog(
-    initial: CustomCharacterEntity?,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, String, String, Float, Float, Float, Float) -> Unit
-) {
-    var name by remember { mutableStateOf(initial?.name ?: "আয়শা") }
-    var role by remember { mutableStateOf(initial?.relationshipRole ?: "বন্ধু") }
-    var callUserAs by remember { mutableStateOf(initial?.callUserAs ?: "") }
-    var language by remember { mutableStateOf(initial?.language ?: "বাংলাদেশি বাংলা") }
-    var voice by remember { mutableStateOf(initial?.voiceName ?: "Sulafat") }
-    var interests by remember { mutableStateOf(initial?.interests ?: "") }
-    var description by remember { mutableStateOf(initial?.description ?: "") }
-    var funLevel by remember { mutableFloatStateOf(initial?.funLevel ?: 0.6f) }
-    var emotionLevel by remember { mutableFloatStateOf(initial?.emotionLevel ?: 0.7f) }
-    var seriousnessLevel by remember { mutableFloatStateOf(initial?.seriousnessLevel ?: 0.4f) }
-    var talkativenessLevel by remember { mutableFloatStateOf(initial?.talkativenessLevel ?: 0.6f) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = NavySurfaceHigh,
-        title = { Text(if (initial == null) "নতুন কাস্টম চরিত্র" else "চরিত্র সম্পাদনা") },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("সহকারীর নাম") }, singleLine = true)
-                OutlinedTextField(value = role, onValueChange = { role = it }, label = { Text("সম্পর্ক বা ভূমিকা") }, singleLine = true)
-                OutlinedTextField(value = callUserAs, onValueChange = { callUserAs = it }, label = { Text("আপনাকে কী নামে ডাকবে") }, singleLine = true)
-                OutlinedTextField(value = language, onValueChange = { language = it }, label = { Text("ভাষা") }, singleLine = true)
-                Text("কণ্ঠ: $voice", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Sulafat", "Leda", "Puck", "Charon").forEach { v ->
-                        FilterChip(selected = voice == v, onClick = { voice = v }, label = { Text(v) })
-                    }
-                }
-                OutlinedTextField(value = interests, onValueChange = { interests = it }, label = { Text("পছন্দের বিষয়") })
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("মুক্ত বিবরণ") })
-
-                Text("মজা: ${(funLevel * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
-                Slider(value = funLevel, onValueChange = { funLevel = it })
-                Text("আবেগ: ${(emotionLevel * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
-                Slider(value = emotionLevel, onValueChange = { emotionLevel = it })
-                Text("গম্ভীরতা: ${(seriousnessLevel * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
-                Slider(value = seriousnessLevel, onValueChange = { seriousnessLevel = it })
-                Text("কথাবার্তার পরিমাণ: ${(talkativenessLevel * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
-                Slider(value = talkativenessLevel, onValueChange = { talkativenessLevel = it })
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                onSave(name, role, callUserAs, language, voice, interests, description, funLevel, emotionLevel, seriousnessLevel, talkativenessLevel)
-            }) {
-                Text("সেভ করুন")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
-        }
-    )
 }
 
 @Composable

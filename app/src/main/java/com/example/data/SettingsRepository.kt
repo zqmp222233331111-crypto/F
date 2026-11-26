@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,19 @@ enum class AccentTheme(val id: String, val labelBn: String) {
     }
 }
 
+enum class VoiceMood(val id: String, val labelBn: String, val descriptionBn: String) {
+    AUTO_BY_MODE("auto", "মোড অনুযায়ী স্বয়ংক্রিয়", "যে মোড বাছবেন সেই অনুযায়ী কণ্ঠ ও আবেগ নিজেই বদলাবে"),
+    WARM_SOFT("warm_soft", "কোমল ও ঘনিষ্ঠ", "নরম, আদুরে ও গভীর যত্নশীল কণ্ঠ"),
+    PLAYFUL_LIVELY("playful", "উচ্ছ্বসিত ও খুনসুটি", "হাসিখুশি, চঞ্চল ও প্রাণবন্ত টোন"),
+    DEEP_EMOTIONAL("emotional", "আবেগঘন ও সংবেদনশীল", "গভীর অনুভূতি, হালকা দীর্ঘশ্বাস ও কোমল বিরতি"),
+    CALM_GENTLE("calm", "শান্ত ও ধীরস্থির", "নিরিবিলি, স্নিগ্ধ ও ধীর ছন্দে কথা");
+
+    companion object {
+        fun fromId(id: String?): VoiceMood =
+            entries.firstOrNull { it.id == id } ?: AUTO_BY_MODE
+    }
+}
+
 data class UserSettings(
     val age18Confirmed: Boolean = false,
     val welcomeCompleted: Boolean = false,
@@ -36,7 +50,9 @@ data class UserSettings(
     val selectedCustomCharacterId: String? = null,
     val selectedVoice: String = "Sulafat",
     val preferredLanguage: String = "বাংলাদেশি বাংলা",
-    val emotionLevel: Float = 0.7f,
+    val emotionLevel: Float = 0.75f,
+    val voiceMood: VoiceMood = VoiceMood.AUTO_BY_MODE,
+    val turnPauseMs: Int = 900,
     val relationshipNoticeShown: Boolean = false,
     val memoryEnabled: Boolean = true,
     val accentTheme: AccentTheme = AccentTheme.VIOLET_PINK,
@@ -63,6 +79,8 @@ class SettingsRepository(private val context: Context) {
         val SELECTED_VOICE = stringPreferencesKey("selected_voice")
         val PREFERRED_LANGUAGE = stringPreferencesKey("preferred_language")
         val EMOTION_LEVEL = floatPreferencesKey("emotion_level")
+        val VOICE_MOOD = stringPreferencesKey("voice_mood")
+        val TURN_PAUSE_MS = intPreferencesKey("turn_pause_ms")
         val RELATIONSHIP_NOTICE_SHOWN = booleanPreferencesKey("relationship_notice_shown")
         val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
         val ACCENT_THEME = stringPreferencesKey("accent_theme")
@@ -87,7 +105,9 @@ class SettingsRepository(private val context: Context) {
             selectedCustomCharacterId = prefs[Keys.SELECTED_CUSTOM_CHAR_ID],
             selectedVoice = prefs[Keys.SELECTED_VOICE] ?: "Sulafat",
             preferredLanguage = prefs[Keys.PREFERRED_LANGUAGE] ?: "বাংলাদেশি বাংলা",
-            emotionLevel = prefs[Keys.EMOTION_LEVEL] ?: 0.7f,
+            emotionLevel = prefs[Keys.EMOTION_LEVEL] ?: 0.75f,
+            voiceMood = VoiceMood.fromId(prefs[Keys.VOICE_MOOD]),
+            turnPauseMs = (prefs[Keys.TURN_PAUSE_MS] ?: 900).coerceIn(500, 2000),
             relationshipNoticeShown = prefs[Keys.RELATIONSHIP_NOTICE_SHOWN] ?: false,
             memoryEnabled = prefs[Keys.MEMORY_ENABLED] ?: true,
             accentTheme = AccentTheme.fromId(prefs[Keys.ACCENT_THEME]),
@@ -136,6 +156,14 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setEmotionLevel(level: Float) {
         context.ayeshaDataStore.edit { it[Keys.EMOTION_LEVEL] = level.coerceIn(0f, 1f) }
+    }
+
+    suspend fun setVoiceMood(mood: VoiceMood) {
+        context.ayeshaDataStore.edit { it[Keys.VOICE_MOOD] = mood.id }
+    }
+
+    suspend fun setTurnPauseMs(ms: Int) {
+        context.ayeshaDataStore.edit { it[Keys.TURN_PAUSE_MS] = ms.coerceIn(500, 2000) }
     }
 
     suspend fun markRelationshipNoticeShown() {

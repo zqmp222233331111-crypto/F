@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -153,7 +154,7 @@ class LiveSessionManager(
             val client = GeminiLiveClient(
                 scope = scope,
                 onStatusChanged = { newStatus ->
-                    _callState.value = _callState.value.copy(status = newStatus)
+                    _callState.update { it.copy(status = newStatus) }
                 },
                 onAudioReceived = { pcm24k ->
                     audioEngine.enqueueOutputPcm(pcm24k)
@@ -168,10 +169,12 @@ class LiveSessionManager(
                     handleToolCall(name, args)
                 },
                 onError = { errBn ->
-                    _callState.value = _callState.value.copy(
-                        status = LiveCallStatus.ERROR,
-                        errorMessageBn = errBn
-                    )
+                    _callState.update {
+                        it.copy(
+                            status = LiveCallStatus.ERROR,
+                            errorMessageBn = errBn
+                        )
+                    }
                 }
             )
             liveClient = client
@@ -182,7 +185,8 @@ class LiveSessionManager(
                     systemInstruction = instruction,
                     includeMemoryTools = settings.memoryEnabled,
                     includePhoneControlTools = settings.phoneControlMasterEnabled,
-                    includeGoogleSearch = mode.isIslamicMode
+                    includeGoogleSearch = mode.isIslamicMode,
+                    turnPauseMs = settings.turnPauseMs
                 )
             )
 
@@ -190,15 +194,20 @@ class LiveSessionManager(
             audioEngine.start(
                 scope = scope,
                 onPcmCaptured = { pcm16k ->
-                    if (_callState.value.status != LiveCallStatus.CONNECTING &&
-                        _callState.value.status != LiveCallStatus.ERROR
-                    ) {
+                    val status = _callState.value.status
+                    if (status != LiveCallStatus.CONNECTING && status != LiveCallStatus.ERROR) {
                         liveClient?.sendPcmAudio(pcm16k)
                     }
                 },
                 onPlaybackActiveChanged = { playing ->
-                    if (!playing && _callState.value.status == LiveCallStatus.SPEAKING) {
-                        _callState.value = _callState.value.copy(status = LiveCallStatus.LISTENING)
+                    if (!playing) {
+                        _callState.update {
+                            if (it.status == LiveCallStatus.SPEAKING) {
+                                it.copy(status = LiveCallStatus.LISTENING)
+                            } else {
+                                it
+                            }
+                        }
                     }
                 }
             )
@@ -240,10 +249,12 @@ class LiveSessionManager(
         timerJob = scope.launch {
             while (isActive && _callState.value.isInCall) {
                 delay(1000L)
-                if (_callState.value.status != LiveCallStatus.ERROR) {
-                    _callState.value = _callState.value.copy(
-                        elapsedSeconds = _callState.value.elapsedSeconds + 1
-                    )
+                _callState.update { state ->
+                    if (state.isInCall && state.status != LiveCallStatus.ERROR) {
+                        state.copy(elapsedSeconds = state.elapsedSeconds + 1)
+                    } else {
+                        state
+                    }
                 }
             }
         }
@@ -254,8 +265,12 @@ class LiveSessionManager(
                 val mic = audioEngine.micAmplitude.value
                 val spk = audioEngine.speakerAmplitude.value
                 val combined = maxOf(mic, spk)
-                if (combined != _callState.value.orbAmplitude) {
-                    _callState.value = _callState.value.copy(orbAmplitude = combined)
+                _callState.update { state ->
+                    if (state.orbAmplitude != combined) {
+                        state.copy(orbAmplitude = combined)
+                    } else {
+                        state
+                    }
                 }
                 delay(45L)
             }

@@ -13,6 +13,7 @@ import com.example.control.PhoneControlUiState
 import com.example.data.AccentTheme
 import com.example.data.KeyVerificationResult
 import com.example.data.UserSettings
+import com.example.data.VoiceMood
 import com.example.data.db.BlockedAppEntity
 import com.example.data.db.CallHistoryEntity
 import com.example.data.db.CustomCharacterEntity
@@ -205,6 +206,14 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { settingsRepo.setEmotionLevel(level) }
     }
 
+    fun setVoiceMood(mood: VoiceMood) {
+        viewModelScope.launch { settingsRepo.setVoiceMood(mood) }
+    }
+
+    fun setTurnPauseMs(ms: Int) {
+        viewModelScope.launch { settingsRepo.setTurnPauseMs(ms) }
+    }
+
     fun saveCustomCharacter(
         existingId: String?,
         name: String,
@@ -218,7 +227,8 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         emotionLevel: Float,
         seriousnessLevel: Float,
         talkativenessLevel: Float,
-        selectImmediately: Boolean = true
+        selectImmediately: Boolean = true,
+        onSaved: () -> Unit = {}
     ) {
         viewModelScope.launch {
             val id = existingId ?: "custom_${UUID.randomUUID().toString().take(8)}"
@@ -230,7 +240,7 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
                 language = language.trim().ifEmpty { "বাংলাদেশি বাংলা" },
                 voiceName = VoiceCatalog.findByName(voiceName).name,
                 interests = interests.trim(),
-                description = description.trim(),
+                description = description.trim().take(com.example.ui.components.MAX_CUSTOM_DESCRIPTION_CHARS),
                 funLevel = funLevel,
                 emotionLevel = emotionLevel,
                 seriousnessLevel = seriousnessLevel,
@@ -240,6 +250,7 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
             if (selectImmediately) {
                 settingsRepo.setSelectedMode(AyeshaMode.CUSTOM.id, id)
             }
+            onSaved()
         }
     }
 

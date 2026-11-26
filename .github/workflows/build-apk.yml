@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -50,3 +53,14 @@ jobs:
           name: Ayesha-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish direct Ayesha.apk to Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Ayesha.apk
+          TAG="v1.0.${{ github.run_number }}"
+          gh release create "$TAG" Ayesha.apk \
+            --title "Ayesha APK #${{ github.run_number }}" \
+            --notes "সরাসরি ইনস্টলযোগ্য Android APK (Ayesha.apk)" \
+            --latest

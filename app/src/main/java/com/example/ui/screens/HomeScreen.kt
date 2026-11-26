@@ -23,11 +23,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,11 +39,13 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +66,8 @@ import com.example.persona.VoiceCatalog
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
 import com.example.ui.components.AyeshaOrb
+import com.example.ui.components.CustomCharacterEditorDialog
+import com.example.ui.components.MAX_CUSTOM_DESCRIPTION_CHARS
 import com.example.ui.components.OrbVisualState
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.AmberWarning
@@ -73,7 +80,22 @@ fun HomeScreen(
     customCharacters: List<CustomCharacterEntity>,
     isKeyVerified: Boolean,
     onSelectMode: (AyeshaMode, String?) -> Unit,
-    onOpenCustomEditor: () -> Unit,
+    onSaveCustomCharacter: (
+        existingId: String?,
+        name: String,
+        role: String,
+        callUserAs: String,
+        lang: String,
+        voice: String,
+        interests: String,
+        desc: String,
+        funLevel: Float,
+        emotionLevel: Float,
+        seriousnessLevel: Float,
+        talkativenessLevel: Float,
+        onSaved: () -> Unit
+    ) -> Unit,
+    onOpenPersonaSettings: () -> Unit,
     onStartAudioCall: () -> Unit,
     onStartVideoCall: () -> Unit,
     onOpenConnectionSettings: () -> Unit,
@@ -82,20 +104,65 @@ fun HomeScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var pendingVideoAfterPerm by remember { mutableStateOf(false) }
 
     val activeMode = AyeshaMode.fromId(settings.selectedModeId)
     val activeCustomChar = customCharacters.firstOrNull { it.id == settings.selectedCustomCharacterId }
+        ?: customCharacters.firstOrNull()
     val activeVoice = VoiceCatalog.findByName(
         if (activeMode == AyeshaMode.CUSTOM && activeCustomChar != null) activeCustomChar.voiceName
         else settings.selectedVoice
     )
 
+    // Inline custom character draft state on HomeScreen so clicking "কাস্টম" immediately shows an editable 10,000-char writing box
+    var draftName by remember { mutableStateOf("আয়শা") }
+    var draftRole by remember { mutableStateOf("বন্ধু") }
+    var draftCallUserAs by remember { mutableStateOf("") }
+    var draftDescription by remember { mutableStateOf("") }
+
+    LaunchedEffect(activeCustomChar?.id, activeCustomChar?.name, activeCustomChar?.relationshipRole, activeCustomChar?.callUserAs, activeCustomChar?.description) {
+        draftName = activeCustomChar?.name ?: "আয়শা"
+        draftRole = activeCustomChar?.relationshipRole ?: "বন্ধু"
+        draftCallUserAs = activeCustomChar?.callUserAs ?: ""
+        draftDescription = (activeCustomChar?.description ?: "").take(MAX_CUSTOM_DESCRIPTION_CHARS)
+    }
+
+    val hasUnsavedCustomChanges = activeMode == AyeshaMode.CUSTOM && (
+        draftName.trim() != (activeCustomChar?.name ?: "আয়শা") ||
+            draftRole.trim() != (activeCustomChar?.relationshipRole ?: "বন্ধু") ||
+            draftCallUserAs.trim() != (activeCustomChar?.callUserAs ?: "") ||
+            draftDescription.trim() != (activeCustomChar?.description ?: "")
+        )
+
+    var showCustomDialog by remember { mutableStateOf(false) }
+    var dialogInitialChar by remember { mutableStateOf<CustomCharacterEntity?>(null) }
+
+    fun persistInlineDraftIfNeeded(thenRun: () -> Unit) {
+        if (hasUnsavedCustomChanges || (activeMode == AyeshaMode.CUSTOM && activeCustomChar == null && draftDescription.isNotBlank())) {
+            onSaveCustomCharacter(
+                activeCustomChar?.id,
+                draftName.ifBlank { "আয়শা" },
+                draftRole.ifBlank { "বন্ধু" },
+                draftCallUserAs,
+                activeCustomChar?.language ?: settings.preferredLanguage,
+                activeCustomChar?.voiceName ?: settings.selectedVoice,
+                activeCustomChar?.interests ?: "",
+                draftDescription.take(MAX_CUSTOM_DESCRIPTION_CHARS),
+                activeCustomChar?.funLevel ?: 0.6f,
+                activeCustomChar?.emotionLevel ?: settings.emotionLevel,
+                activeCustomChar?.seriousnessLevel ?: 0.4f,
+                activeCustomChar?.talkativenessLevel ?: 0.6f,
+                thenRun
+            )
+        } else {
+            thenRun()
+        }
+    }
+
     val audioPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            onStartAudioCall()
+            persistInlineDraftIfNeeded(onStartAudioCall)
         } else {
             scope.launch {
                 snackbarHostState.showSnackbar("কলের জন্য মাইক্রোফোন অনুমতি প্রয়োজন। সেটিংস থেকে চালু করুন।")
@@ -109,7 +176,7 @@ fun HomeScreen(
         val micOk = results[Manifest.permission.RECORD_AUDIO] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (micOk) {
-            onStartVideoCall()
+            persistInlineDraftIfNeeded(onStartVideoCall)
         } else {
             scope.launch {
                 snackbarHostState.showSnackbar("ভিডিও কলের জন্য অন্তত মাইক্রোফোন অনুমতি প্রয়োজন।")
@@ -127,7 +194,7 @@ fun HomeScreen(
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         if (micGranted) {
-            onStartAudioCall()
+            persistInlineDraftIfNeeded(onStartAudioCall)
         } else {
             audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -147,9 +214,8 @@ fun HomeScreen(
             Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
         if (micGranted && camGranted) {
-            onStartVideoCall()
+            persistInlineDraftIfNeeded(onStartVideoCall)
         } else {
-            pendingVideoAfterPerm = true
             videoPermLauncher.launch(
                 arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
             )
@@ -176,8 +242,8 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            text = if (activeMode == AyeshaMode.CUSTOM && activeCustomChar != null) {
-                                activeCustomChar.name
+                            text = if (activeMode == AyeshaMode.CUSTOM) {
+                                draftName.ifBlank { activeCustomChar?.name ?: "আয়শা" }
                             } else {
                                 "আয়শা"
                             },
@@ -203,7 +269,7 @@ fun HomeScreen(
                 // Center Large Animated Orb
                 AyeshaOrb(
                     state = OrbVisualState.IDLE,
-                    size = 220.dp,
+                    size = 210.dp,
                     modifier = Modifier.testTag("home_ayesha_orb")
                 )
 
@@ -298,7 +364,13 @@ fun HomeScreen(
                         text = "ব্যক্তিত্ব মোড",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    TextButton(onClick = onOpenCustomEditor) {
+                    TextButton(
+                        onClick = {
+                            dialogInitialChar = null
+                            showCustomDialog = true
+                        },
+                        modifier = Modifier.testTag("home_create_custom_btn")
+                    ) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("কাস্টম তৈরি")
@@ -333,11 +405,14 @@ fun HomeScreen(
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                if (mode == AyeshaMode.CUSTOM && customCharacters.isEmpty()) {
-                                    onOpenCustomEditor()
-                                } else {
-                                    onSelectMode(mode, activeCustomChar?.id ?: customCharacters.firstOrNull()?.id)
-                                }
+                                onSelectMode(
+                                    mode,
+                                    if (mode == AyeshaMode.CUSTOM) {
+                                        activeCustomChar?.id ?: customCharacters.firstOrNull()?.id
+                                    } else {
+                                        settings.selectedCustomCharacterId
+                                    }
+                                )
                             },
                             label = {
                                 Text(
@@ -354,22 +429,188 @@ fun HomeScreen(
                     }
                 }
 
-                if (activeMode == AyeshaMode.CUSTOM && customCharacters.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    AyeshaCard {
-                        Text(
-                            text = "আপনার কাস্টম চরিত্রসমূহ",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(customCharacters, key = { it.id }) { ch ->
-                                FilterChip(
-                                    selected = ch.id == settings.selectedCustomCharacterId,
-                                    onClick = { onSelectMode(AyeshaMode.CUSTOM, ch.id) },
-                                    label = { Text("${ch.name} (${ch.relationshipRole})") }
-                                )
+                // Direct Custom Character Writing Box shown immediately when "কাস্টম" is selected
+                if (activeMode == AyeshaMode.CUSTOM) {
+                    Spacer(Modifier.height(12.dp))
+                    AyeshaCard(highlightBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "কাস্টম চরিত্র নিজের মতো সাজান",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = {
+                                    dialogInitialChar = null
+                                    showCustomDialog = true
+                                }
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("নতুন")
                             }
+                        }
+
+                        if (customCharacters.isNotEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            ) {
+                                items(customCharacters, key = { it.id }) { ch ->
+                                    FilterChip(
+                                        selected = ch.id == activeCustomChar?.id,
+                                        onClick = { onSelectMode(AyeshaMode.CUSTOM, ch.id) },
+                                        label = { Text("${ch.name} (${ch.relationshipRole})") }
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = draftName,
+                                onValueChange = { draftName = it },
+                                label = { Text("নাম") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("home_custom_name_input")
+                            )
+                            OutlinedTextField(
+                                value = draftRole,
+                                onValueChange = { draftRole = it },
+                                label = { Text("সম্পর্ক / ভূমিকা") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("home_custom_role_input")
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = draftCallUserAs,
+                            onValueChange = { draftCallUserAs = it },
+                            label = { Text("আপনাকে কী নামে ডাকবে (ঐচ্ছিক)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = draftDescription,
+                            onValueChange = { draftDescription = it.take(MAX_CUSTOM_DESCRIPTION_CHARS) },
+                            label = { Text("নিজের মতো সাজিয়ে লিখুন (কাস্টম নির্দেশনা)") },
+                            placeholder = {
+                                Text("এখানে বিস্তারিত লিখুন আয়শা কেমন স্বভাবের হবে, কীভাবে কথা বলবে, কী বিষয়ে কথা বলবে বা কী কী নিয়ম মানবে...")
+                            },
+                            minLines = 5,
+                            maxLines = 12,
+                            shape = RoundedCornerShape(16.dp),
+                            supportingText = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("সর্বোচ্চ ১০,০০০ অক্ষর পর্যন্ত লিখতে পারবেন")
+                                    Text(
+                                        text = "${draftDescription.length} / 10,000",
+                                        color = if (draftDescription.length >= MAX_CUSTOM_DESCRIPTION_CHARS) {
+                                            AmberWarning
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("home_custom_description_input")
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = {
+                                    onSaveCustomCharacter(
+                                        activeCustomChar?.id,
+                                        draftName.ifBlank { "আয়শা" },
+                                        draftRole.ifBlank { "বন্ধু" },
+                                        draftCallUserAs,
+                                        activeCustomChar?.language ?: settings.preferredLanguage,
+                                        activeCustomChar?.voiceName ?: settings.selectedVoice,
+                                        activeCustomChar?.interests ?: "",
+                                        draftDescription.take(MAX_CUSTOM_DESCRIPTION_CHARS),
+                                        activeCustomChar?.funLevel ?: 0.6f,
+                                        activeCustomChar?.emotionLevel ?: settings.emotionLevel,
+                                        activeCustomChar?.seriousnessLevel ?: 0.4f,
+                                        activeCustomChar?.talkativenessLevel ?: 0.6f
+                                    ) {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("কাস্টম নির্দেশনা সেভ হয়েছে!")
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("home_custom_save_button")
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("সেভ করুন")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    dialogInitialChar = (activeCustomChar ?: CustomCharacterEntity(
+                                        id = "",
+                                        name = draftName.ifBlank { "আয়শা" },
+                                        relationshipRole = draftRole.ifBlank { "বন্ধু" },
+                                        callUserAs = draftCallUserAs,
+                                        language = settings.preferredLanguage,
+                                        voiceName = settings.selectedVoice,
+                                        interests = "",
+                                        description = draftDescription,
+                                        funLevel = 0.6f,
+                                        emotionLevel = settings.emotionLevel,
+                                        seriousnessLevel = 0.4f,
+                                        talkativenessLevel = 0.6f
+                                    ))
+                                    showCustomDialog = true
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("আরও")
+                            }
+                        }
+
+                        TextButton(
+                            onClick = onOpenPersonaSettings,
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("সব কাস্টম চরিত্র ম্যানেজ করুন")
                         }
                     }
                 }
@@ -419,5 +660,34 @@ fun HomeScreen(
             }
         }
         SnackbarHost(hostState = snackbarHostState)
+    }
+
+    if (showCustomDialog) {
+        val editingId = dialogInitialChar?.id?.takeIf { it.isNotBlank() }
+        CustomCharacterEditorDialog(
+            initial = dialogInitialChar,
+            onDismiss = { showCustomDialog = false },
+            onSave = { name, role, callUserAs, lang, voice, interests, desc, funL, emoL, serL, talkL ->
+                onSaveCustomCharacter(
+                    editingId,
+                    name,
+                    role,
+                    callUserAs,
+                    lang,
+                    voice,
+                    interests,
+                    desc,
+                    funL,
+                    emoL,
+                    serL,
+                    talkL
+                ) {
+                    showCustomDialog = false
+                    scope.launch {
+                        snackbarHostState.showSnackbar("কাস্টম চরিত্র সেভ ও সক্রিয় করা হয়েছে!")
+                    }
+                }
+            }
+        )
     }
 }

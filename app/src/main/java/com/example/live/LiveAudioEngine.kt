@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -41,6 +42,7 @@ class LiveAudioEngine(private val context: Context) {
     private var echoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
     private var audioTrack: AudioTrack? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     private var recordJob: Job? = null
     private var playbackJob: Job? = null
@@ -128,13 +130,26 @@ class LiveAudioEngine(private val context: Context) {
             AudioFormat.ENCODING_PCM_16BIT
         )
         val inBufSize = maxOf(minInBuf * 2, 3200)
-        val recorder = AudioRecord(
+        var recorder = AudioRecord(
             MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             INPUT_SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
             inBufSize
         )
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            try {
+                recorder.release()
+            } catch (_: Exception) {
+            }
+            recorder = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                INPUT_SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                inBufSize
+            )
+        }
 
         if (recorder.state == AudioRecord.STATE_INITIALIZED) {
             val sessionId = recorder.audioSessionId
@@ -212,6 +227,20 @@ class LiveAudioEngine(private val context: Context) {
     private fun setupAudioFocusAndRoute(route: AudioRoute) {
         _audioRoute.value = route
         try {
+            if (audioFocusRequest == null) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener { }
+                    .build()
+                audioFocusRequest = req
+                audioManager.requestAudioFocus(req)
+            }
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val devices = audioManager.availableCommunicationDevices
@@ -320,6 +349,12 @@ class LiveAudioEngine(private val context: Context) {
             audioManager.mode = AudioManager.MODE_NORMAL
         } catch (_: Exception) {
         }
+
+        try {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } catch (_: Exception) {
+        }
+        audioFocusRequest = null
 
         _micAmplitude.value = 0f
         _speakerAmplitude.value = 0f

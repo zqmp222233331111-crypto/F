@@ -9,8 +9,10 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 enum class LiveCallStatus(val labelBn: String) {
@@ -29,7 +31,8 @@ data class LiveSessionConfig(
     val systemInstruction: String,
     val includeMemoryTools: Boolean,
     val includePhoneControlTools: Boolean,
-    val includeGoogleSearch: Boolean
+    val includeGoogleSearch: Boolean,
+    val turnPauseMs: Int = 900
 )
 
 /**
@@ -63,33 +66,58 @@ class GeminiLiveClient(
     @Volatile
     private var silentReconnectPending = false
 
+    @Volatile
+    private var hasSentInitialGreeting = false
+
+    @Volatile
+    private var setupCompleted = false
+
+    @Volatile
+    private var socketGeneration = 0L
+
     fun connect(config: LiveSessionConfig) {
         userClosed = false
         currentConfig = config
         resumptionHandle = null
+        hasSentInitialGreeting = false
+        setupCompleted = false
         onStatusChanged(LiveCallStatus.CONNECTING)
         openSocket(config, isReconnect = false)
     }
 
     private fun openSocket(config: LiveSessionConfig, isReconnect: Boolean) {
         silentReconnectPending = false
+        setupCompleted = false
+        val generation = ++socketGeneration
+        val encodedKey = URLEncoder.encode(config.apiKey.trim(), "UTF-8")
         val request = Request.Builder()
-            .url(LIVE_WS_URL)
-            .addHeader("x-goog-api-key", config.apiKey)
+            .url("$LIVE_WS_URL?key=$encodedKey")
+            .addHeader("x-goog-api-key", config.apiKey.trim())
             .build()
 
-        webSocket?.close(1000, "Replacing socket")
+        val previous = webSocket
+        webSocket = null
+        previous?.close(1000, "Replacing socket")
+
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (generation != socketGeneration) return
                 sendSetupMessage(webSocket, config, resumptionHandle)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                handleServerMessage(text)
+                if (generation != socketGeneration) return
+                handleServerMessage(webSocket, text)
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                if (generation != socketGeneration) return
+                handleServerMessage(webSocket, bytes.utf8())
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (userClosed) return
+                if (userClosed || generation != socketGeneration) return
+                setupCompleted = false
                 val code = response?.code
                 val msg = when {
                     code == 401 || code == 403 ->
@@ -109,7 +137,8 @@ class GeminiLiveClient(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (userClosed) return
+                if (userClosed || generation != socketGeneration) return
+                setupCompleted = false
                 if (silentReconnectPending) {
                     currentConfig?.let {
                         onStatusChanged(LiveCallStatus.RECONNECTING)
@@ -124,6 +153,8 @@ class GeminiLiveClient(
                             "ফ্রি সীমা শেষ, কিছুক্ষণ পরে চেষ্টা করুন।"
                         lower.contains("api key") || lower.contains("permission") || lower.contains("unauthorized") ->
                             "API কী-টি অনুমোদিত নয়। দয়া করে যাচাই করুন।"
+                        reason.isNotBlank() ->
+                            "কল সংযোগ বিচ্ছিন্ন হয়েছে ($code): $reason"
                         else -> "কল সংযোগ বিচ্ছিন্ন হয়েছে।"
                     }
                     onStatusChanged(LiveCallStatus.ERROR)
@@ -173,6 +204,15 @@ class GeminiLiveClient(
                 }
             )
             .put("inputAudioTranscription", JSONObject())
+            .put(
+                "realtimeInputConfig",
+                JSONObject().put(
+                    "automaticActivityDetection",
+                    JSONObject()
+                        .put("disabled", false)
+                        .put("silenceDurationMs", config.turnPauseMs.coerceIn(500, 2000))
+                )
+            )
 
         val tools = LiveToolDeclarations.buildToolsArray(
             includeMemoryTools = config.includeMemoryTools,
@@ -188,6 +228,7 @@ class GeminiLiveClient(
     }
 
     fun sendPcmAudio(pcm16kBytes: ByteArray) {
+        if (!setupCompleted) return
         val ws = webSocket ?: return
         val base64 = Base64.encodeToString(pcm16kBytes, Base64.NO_WRAP)
         val msg = JSONObject().put(
@@ -203,6 +244,7 @@ class GeminiLiveClient(
     }
 
     fun sendImageFrame(jpegBytes: ByteArray) {
+        if (!setupCompleted) return
         val ws = webSocket ?: return
         val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
         val msg = JSONObject().put(
@@ -217,12 +259,38 @@ class GeminiLiveClient(
         ws.send(msg.toString())
     }
 
-    private fun handleServerMessage(rawJson: String) {
+    private fun handleServerMessage(ws: WebSocket, rawJson: String) {
         try {
             val root = JSONObject(rawJson)
 
             if (root.has("setupComplete")) {
+                setupCompleted = true
                 onStatusChanged(LiveCallStatus.LISTENING)
+                if (!hasSentInitialGreeting) {
+                    hasSentInitialGreeting = true
+                    val greetPayload = JSONObject().put(
+                        "clientContent",
+                        JSONObject()
+                            .put(
+                                "turns",
+                                JSONArray().put(
+                                    JSONObject()
+                                        .put("role", "user")
+                                        .put(
+                                            "parts",
+                                            JSONArray().put(
+                                                JSONObject().put(
+                                                    "text",
+                                                    "কলটি মাত্র রিসিভ হয়েছে। কোনো যান্ত্রিক ভূমিকা ছাড়াই এখনই তোমার সক্রিয় চরিত্র ও আবেগের ধরন অনুযায়ী একদম জীবন্ত, আন্তরিক মানুষের মতো সংক্ষেপে কথা শুরু করো।"
+                                                )
+                                            )
+                                        )
+                                )
+                            )
+                            .put("turnComplete", true)
+                    )
+                    ws.send(greetPayload.toString())
+                }
                 return
             }
 
@@ -339,6 +407,8 @@ class GeminiLiveClient(
     fun disconnect() {
         userClosed = true
         silentReconnectPending = false
+        setupCompleted = false
+        socketGeneration++
         try {
             webSocket?.close(1000, "Call ended")
         } catch (_: Exception) {
