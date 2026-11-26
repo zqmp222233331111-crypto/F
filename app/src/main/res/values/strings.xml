@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">আয়শা</string>
+    <string name="ime_name">আয়শা কিবোর্ড</string>
+    <string name="accessibility_service_description">আয়শা ফোন নিয়ন্ত্রণ সেবা: আপনার মৌখিক নির্দেশে পর্দার লেখা পড়ে, অ্যাপ খোলে, ট্যাপ করে এবং টাইপ করে। পাসওয়ার্ড, পিন, ওটিপি ও ব্যাংকিং অ্যাপ থেকে সম্পূর্ণ সুরক্ষিত।</string>
+    <string name="call_notification_channel_name">আয়শা লাইভ কল</string>
+    <string name="greeting_notification_channel_name">দৈনিক শুভেচ্ছা</string>
+</resources>

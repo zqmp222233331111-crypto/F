@@ -1,0 +1,6 @@
+{
+  "name": "আয়শা",
+  "description": "ভয়েস ও ভিডিও কলের মাধ্যমে বাংলা এআই সহকারী ও সঙ্গী",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
