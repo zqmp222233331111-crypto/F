@@ -67,7 +67,7 @@ object LiveToolDeclarations {
             functionDeclarations.put(
                 fn(
                     "open_app",
-                    "Open an installed app by name or package name. Refuses banking/wallet apps.",
+                    "Open an installed app by name (English or Bengali) or package name, wait briefly for it to load, and return initial screen elements. Refuses banking/wallet apps.",
                     mapOf("app_name" to prop("STRING", "Visible app name or package name")),
                     listOf("app_name")
                 )
@@ -127,10 +127,11 @@ object LiveToolDeclarations {
             functionDeclarations.put(
                 fn(
                     "type_text",
-                    "Type Bengali or English Unicode text into a non-sensitive input field.",
+                    "Type Bengali or English Unicode text into a non-sensitive input field. Optionally set submit=true to press Search/Enter/Done right after typing.",
                     mapOf(
-                        "node_id" to prop("STRING", "Editable element id from read_screen"),
-                        "text" to prop("STRING", "Text to type")
+                        "node_id" to prop("STRING", "Editable element id from read_screen (optional if already focused or first visible input box)"),
+                        "text" to prop("STRING", "Text to type"),
+                        "submit" to prop("BOOLEAN", "Optional: set true to trigger Search/Enter/Send after typing")
                     ),
                     listOf("text")
                 )

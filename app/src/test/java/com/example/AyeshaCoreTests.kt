@@ -122,5 +122,7 @@ class AyeshaCoreTests {
         assertTrue(instruction.contains(longDescription))
         assertTrue(instruction.contains("তানিয়া"))
         assertTrue(instruction.contains("ভাইয়া"))
+        assertTrue(instruction.contains("আমির ইসলাম"))
+        assertTrue(instruction.contains("SILENT UNLESS ASKED"))
     }
 }

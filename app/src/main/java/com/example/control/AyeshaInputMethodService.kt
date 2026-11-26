@@ -10,6 +10,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -236,6 +237,24 @@ class AyeshaInputMethodService : InputMethodService() {
     fun commitTextFromAgent(text: String): Boolean {
         val ic = currentInputConnection ?: return false
         return ic.commitText(text, 1)
+    }
+
+    fun submitEditorActionFromAgent(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val imeOptions = currentInputEditorInfo?.imeOptions ?: 0
+        val action = imeOptions and EditorInfo.IME_MASK_ACTION
+        val handled = when (action) {
+            EditorInfo.IME_ACTION_SEARCH,
+            EditorInfo.IME_ACTION_SEND,
+            EditorInfo.IME_ACTION_GO,
+            EditorInfo.IME_ACTION_DONE,
+            EditorInfo.IME_ACTION_NEXT -> ic.performEditorAction(action)
+            else -> false
+        }
+        if (handled) return true
+        val down = ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        val up = ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        return down || up
     }
 
     companion object {

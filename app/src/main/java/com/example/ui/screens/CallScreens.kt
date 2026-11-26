@@ -107,7 +107,8 @@ fun AudioCallScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = callState.characterName,
-                    style = MaterialTheme.typography.headlineMedium
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(
@@ -214,7 +215,11 @@ fun AudioCallScreen(
                         )
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text("শেষ করুন", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        text = "শেষ করুন",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                 }
             }
         }
@@ -529,7 +534,11 @@ private fun CallCircleButton(
             Icon(icon, contentDescription = label)
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
     }
 }
 

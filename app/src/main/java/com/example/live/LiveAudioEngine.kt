@@ -72,15 +72,13 @@ class LiveAudioEngine(private val context: Context) {
         stop()
         setupAudioFocusAndRoute(AudioRoute.SPEAKER)
 
-        // Output: 24 kHz, 16-bit PCM mono
-        val outBufSize = maxOf(
-            AudioTrack.getMinBufferSize(
-                OUTPUT_SAMPLE_RATE,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            ),
-            4800
+        // Output: 24 kHz, 16-bit PCM mono (400ms buffer prevents choppy/unclear audio on mobile data)
+        val minOutBuf = AudioTrack.getMinBufferSize(
+            OUTPUT_SAMPLE_RATE,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
         )
+        val outBufSize = maxOf(minOutBuf * 4, 19200)
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()

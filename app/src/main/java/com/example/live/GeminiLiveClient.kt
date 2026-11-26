@@ -3,6 +3,8 @@ package com.example.live
 import android.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -59,6 +61,7 @@ class GeminiLiveClient(
     private var webSocket: WebSocket? = null
     private var currentConfig: LiveSessionConfig? = null
     private var resumptionHandle: String? = null
+    private var setupTimeoutJob: Job? = null
 
     @Volatile
     private var userClosed = false
@@ -89,6 +92,19 @@ class GeminiLiveClient(
         silentReconnectPending = false
         setupCompleted = false
         val generation = ++socketGeneration
+        setupTimeoutJob?.cancel()
+        setupTimeoutJob = scope.launch {
+            delay(15_000L)
+            if (!userClosed && !setupCompleted && generation == socketGeneration) {
+                onStatusChanged(LiveCallStatus.ERROR)
+                onError("সার্ভারের সাথে সংযোগ হতে সময় বেশি লাগছে। ইন্টারনেট পরীক্ষা করে আবার কল করুন।")
+                try {
+                    webSocket?.close(1000, "Setup timeout")
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         val encodedKey = URLEncoder.encode(config.apiKey.trim(), "UTF-8")
         val request = Request.Builder()
             .url("$LIVE_WS_URL?key=$encodedKey")
@@ -118,6 +134,7 @@ class GeminiLiveClient(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (userClosed || generation != socketGeneration) return
                 setupCompleted = false
+                setupTimeoutJob?.cancel()
                 val code = response?.code
                 val msg = when {
                     code == 401 || code == 403 ->
@@ -136,9 +153,22 @@ class GeminiLiveClient(
                 }
             }
 
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                if (userClosed || generation != socketGeneration) return
+                if (!silentReconnectPending && code != 1000) {
+                    setupTimeoutJob?.cancel()
+                    handleSocketCloseReason(code, reason)
+                }
+                try {
+                    webSocket.close(code, reason)
+                } catch (_: Exception) {
+                }
+            }
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (userClosed || generation != socketGeneration) return
                 setupCompleted = false
+                setupTimeoutJob?.cancel()
                 if (silentReconnectPending) {
                     currentConfig?.let {
                         onStatusChanged(LiveCallStatus.RECONNECTING)
@@ -147,21 +177,25 @@ class GeminiLiveClient(
                     return
                 }
                 if (code != 1000) {
-                    val lower = reason.lowercase()
-                    val bnError = when {
-                        lower.contains("quota") || lower.contains("rate") || lower.contains("exhausted") ->
-                            "ফ্রি সীমা শেষ, কিছুক্ষণ পরে চেষ্টা করুন।"
-                        lower.contains("api key") || lower.contains("permission") || lower.contains("unauthorized") ->
-                            "API কী-টি অনুমোদিত নয়। দয়া করে যাচাই করুন।"
-                        reason.isNotBlank() ->
-                            "কল সংযোগ বিচ্ছিন্ন হয়েছে ($code): $reason"
-                        else -> "কল সংযোগ বিচ্ছিন্ন হয়েছে।"
-                    }
-                    onStatusChanged(LiveCallStatus.ERROR)
-                    onError(bnError)
+                    handleSocketCloseReason(code, reason)
                 }
             }
         })
+    }
+
+    private fun handleSocketCloseReason(code: Int, reason: String) {
+        val lower = reason.lowercase()
+        val bnError = when {
+            lower.contains("quota") || lower.contains("rate") || lower.contains("exhausted") ->
+                "ফ্রি সীমা শেষ, কিছুক্ষণ পরে চেষ্টা করুন।"
+            lower.contains("api key") || lower.contains("permission") || lower.contains("unauthorized") ->
+                "API কী-টি অনুমোদিত নয়। দয়া করে যাচাই করুন।"
+            reason.isNotBlank() ->
+                "কল সংযোগ বিচ্ছিন্ন হয়েছে ($code): $reason"
+            else -> "কল সংযোগ বিচ্ছিন্ন হয়েছে।"
+        }
+        onStatusChanged(LiveCallStatus.ERROR)
+        onError(bnError)
     }
 
     private fun sendSetupMessage(
@@ -265,6 +299,7 @@ class GeminiLiveClient(
 
             if (root.has("setupComplete")) {
                 setupCompleted = true
+                setupTimeoutJob?.cancel()
                 onStatusChanged(LiveCallStatus.LISTENING)
                 if (!hasSentInitialGreeting) {
                     hasSentInitialGreeting = true
@@ -408,6 +443,8 @@ class GeminiLiveClient(
         userClosed = true
         silentReconnectPending = false
         setupCompleted = false
+        setupTimeoutJob?.cancel()
+        setupTimeoutJob = null
         socketGeneration++
         try {
             webSocket?.close(1000, "Call ended")

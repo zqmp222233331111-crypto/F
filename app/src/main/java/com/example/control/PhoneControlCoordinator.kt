@@ -53,12 +53,14 @@ class PhoneControlCoordinator(
 
     private var consecutiveFailures = 0
     private var lastErrorSignature: String? = null
+    private var lastToolTimestampMs = 0L
     private val callActionLogs = mutableListOf<ActionLogItem>()
 
     fun beginCallSession() {
         stopRequested.set(false)
         consecutiveFailures = 0
         lastErrorSignature = null
+        lastToolTimestampMs = 0L
         callActionLogs.clear()
         _uiState.value = PhoneControlUiState()
     }
@@ -179,8 +181,14 @@ class PhoneControlCoordinator(
             }
         }
 
-        // Step budget check (excluding passive read_screen/list_apps/wait_for_screen? Keep total bounded at 25!)
-        val nextStep = _uiState.value.stepCount + 1
+        // Per-task step budget: reset when a new task begins after idle (>20s pause)
+        val nowMs = System.currentTimeMillis()
+        val isNewTask = !_uiState.value.isTaskRunning || (lastToolTimestampMs > 0L && nowMs - lastToolTimestampMs > 20_000L)
+        val baseSteps = if (isNewTask) 0 else _uiState.value.stepCount
+        lastToolTimestampMs = nowMs
+
+        val isPassiveObservation = toolName == "read_screen" || toolName == "wait_for_screen" || toolName == "list_apps"
+        val nextStep = if (isPassiveObservation) baseSteps else baseSteps + 1
         if (nextStep > 25) {
             stopTaskNow("২৫ ধাপের সীমা পূর্ণ হয়েছে। নিরাপত্তার জন্য কাজটি এখানেই থামানো হলো।")
             return@withLock refusal(
@@ -270,10 +278,12 @@ class PhoneControlCoordinator(
             "type_text" -> {
                 val nodeId = args["node_id"]?.toString()
                 val text = args["text"]?.toString().orEmpty()
+                val submit = (args["submit"] as? Boolean) ?: false
                 service.toolTypeText(
                     nodeId = nodeId,
                     text = text,
-                    allowKeyboardSwitch = settings.allowKeyboardSwitch
+                    allowKeyboardSwitch = settings.allowKeyboardSwitch,
+                    submit = submit
                 )
             }
             "clear_text" -> {

@@ -87,7 +87,7 @@ class AyeshaAccessibilityService : AccessibilityService() {
         )
     }
 
-    fun toolOpenApp(query: String, blockedPackages: Set<String>): Map<String, Any?> {
+    suspend fun toolOpenApp(query: String, blockedPackages: Set<String>): Map<String, Any?> {
         if (query.isBlank()) {
             return mapOf("success" to false, "error" to "অ্যাপের নাম বা প্যাকেজ উল্লেখ করা হয়নি।")
         }
@@ -96,19 +96,26 @@ class AyeshaAccessibilityService : AccessibilityService() {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
         val activities = pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
-        val qLower = query.trim().lowercase()
+        val rawLower = query.trim().lowercase()
+        val candidateQueries = buildList {
+            add(rawLower)
+            bengaliAppAliases.forEach { (bn, aliases) ->
+                if (rawLower.contains(bn)) addAll(aliases)
+            }
+        }
 
-        val matched = activities.firstOrNull {
-            it.activityInfo.packageName.equals(query.trim(), ignoreCase = true)
-        } ?: activities.firstOrNull {
-            it.loadLabel(pm).toString().equals(query.trim(), ignoreCase = true)
-        } ?: activities.firstOrNull {
-            it.loadLabel(pm).toString().lowercase().contains(qLower) ||
-                it.activityInfo.packageName.lowercase().contains(qLower)
+        val matched = activities.firstOrNull { info ->
+            val pkg = info.activityInfo.packageName.lowercase()
+            val lbl = info.loadLabel(pm).toString().lowercase()
+            candidateQueries.any { q -> pkg == q || lbl == q }
+        } ?: activities.firstOrNull { info ->
+            val pkg = info.activityInfo.packageName.lowercase()
+            val lbl = info.loadLabel(pm).toString().lowercase()
+            candidateQueries.any { q -> lbl.contains(q) || pkg.contains(q) }
         }
 
         if (matched == null) {
-            return mapOf("success" to false, "error" to "'$query' অ্যাপটি ফোনে খুঁজে পাওয়া যায়নি।")
+            return mapOf("success" to false, "error" to "'$query' অ্যাপটি ফোনে খুঁজে পাওয়া যায়নি। list_apps ব্যবহার করে সঠিক নাম দেখুন।")
         }
 
         val pkg = matched.activityInfo.packageName
@@ -125,7 +132,14 @@ class AyeshaAccessibilityService : AccessibilityService() {
         } ?: return mapOf("success" to false, "error" to "'$label' খোলার অনুমতি পাওয়া যায়নি।")
 
         startActivity(launch)
-        return mapOf("success" to true, "message" to "$label খোলা হয়েছে।", "package" to pkg)
+        delay(950)
+        val screenSnapshot = toolReadScreen(blockedPackages)
+        return mapOf(
+            "success" to true,
+            "message" to "$label খোলা হয়েছে।",
+            "package" to pkg,
+            "screen" to screenSnapshot
+        )
     }
 
     fun toolReadScreen(blockedPackages: Set<String>): Map<String, Any?> {
@@ -285,11 +299,14 @@ class AyeshaAccessibilityService : AccessibilityService() {
     suspend fun toolTypeText(
         nodeId: String?,
         text: String,
-        allowKeyboardSwitch: Boolean
+        allowKeyboardSwitch: Boolean,
+        submit: Boolean = false
     ): Map<String, Any?> {
         if (text.isEmpty()) return mapOf("success" to false, "error" to "টাইপ করার মতো কোনো লেখা নেই।")
-        val node = (nodeId?.let { nodeCache[it] }) ?: findFirstFocusedEditableNode()
-            ?: return mapOf("success" to false, "error" to "টাইপ করার মতো ইনপুট বক্স পাওয়া যায়নি।")
+        val node = (nodeId?.let { nodeCache[it] })
+            ?: findFirstFocusedEditableNode()
+            ?: findFirstEditableNode()
+            ?: return mapOf("success" to false, "error" to "টাইপ করার মতো ইনপুট বক্স পাওয়া যায়নি। আগে ইনপুট বক্সে ট্যাপ করুন।")
 
         if (isNodeProtected(node)) {
             return mapOf(
@@ -298,13 +315,16 @@ class AyeshaAccessibilityService : AccessibilityService() {
             )
         }
 
-        // Focus node first
+        // Focus node first (try ACTION_FOCUS + ACTION_CLICK + tap gesture)
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        if (!node.isFocused) {
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
         val rect = Rect()
         node.getBoundsInScreen(rect)
         if (!node.isFocused && rect.width() > 0 && rect.height() > 0) {
             dispatchTapGesture(rect.exactCenterX(), rect.exactCenterY(), 60L)
-            delay(220)
+            delay(280)
         }
 
         // Prefer AyeshaInputMethodService via API 30 SoftKeyboardController when enabled
@@ -320,10 +340,14 @@ class AyeshaAccessibilityService : AccessibilityService() {
                 false
             }
             if (switched) {
-                delay(280)
+                delay(300)
                 val ime = AyeshaInputMethodService.getActiveInstance()
                 val committed = ime?.commitTextFromAgent(text) ?: false
-                delay(160)
+                if (committed && submit) {
+                    delay(120)
+                    ime?.submitEditorActionFromAgent()
+                }
+                delay(180)
                 if (!previousIme.isNullOrBlank() && previousIme != ayeshaImeId) {
                     try {
                         softKeyboardController.switchToInputMethod(previousIme)
@@ -333,21 +357,34 @@ class AyeshaAccessibilityService : AccessibilityService() {
                 if (committed) {
                     return mapOf(
                         "success" to true,
-                        "message" to "আয়শা কিবোর্ডের মাধ্যমে লেখা টাইপ করা হয়েছে।"
+                        "submitted" to submit,
+                        "message" to if (submit) {
+                            "আয়শা কিবোর্ডের মাধ্যমে লেখা টাইপ ও সাবমিট করা হয়েছে।"
+                        } else {
+                            "আয়শা কিবোর্ডের মাধ্যমে লেখা টাইপ করা হয়েছে।"
+                        }
                     )
                 }
             }
         }
 
-        // Fallback: Accessibility ACTION_SET_TEXT
+        // Fallback: Accessibility ACTION_SET_TEXT + ACTION_IME_ENTER
         val existing = node.text?.toString().orEmpty()
         val combined = if (existing.isEmpty()) text else "$existing$text"
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined)
         }
         val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (ok && submit) {
+            delay(150)
+            node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        }
         return if (ok) {
-            mapOf("success" to true, "message" to "লেখা বসানো হয়েছে।")
+            mapOf(
+                "success" to true,
+                "submitted" to submit,
+                "message" to if (submit) "লেখা বসানো ও সাবমিট করা হয়েছে।" else "লেখা বসানো হয়েছে।"
+            )
         } else {
             mapOf("success" to false, "error" to "ইনপুট বক্সে টাইপ করা যায়নি।")
         }
@@ -395,6 +432,19 @@ class AyeshaAccessibilityService : AccessibilityService() {
         return search(root)
     }
 
+    private fun findFirstEditableNode(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        fun search(n: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (n == null) return null
+            if (n.isEditable && n.isVisibleToUser && !isNodeProtected(n)) return n
+            for (i in 0 until n.childCount) {
+                search(n.getChild(i))?.let { return it }
+            }
+            return null
+        }
+        return search(root)
+    }
+
     private fun dispatchTapGesture(x: Float, y: Float, durationMs: Long): Boolean {
         val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs)
@@ -427,6 +477,29 @@ class AyeshaAccessibilityService : AccessibilityService() {
 
         private val _isConnected = MutableStateFlow(false)
         val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+        private val bengaliAppAliases = mapOf(
+            "ইউটিউব" to listOf("youtube"),
+            "হোয়াটসঅ্যাপ" to listOf("whatsapp"),
+            "ফেসবুক" to listOf("facebook"),
+            "মেসেঞ্জার" to listOf("messenger"),
+            "ক্রোম" to listOf("chrome"),
+            "গুগল" to listOf("google"),
+            "সেটিংস" to listOf("settings"),
+            "ক্যামেরা" to listOf("camera"),
+            "গ্যালারি" to listOf("gallery", "photos"),
+            "ফোন" to listOf("phone", "dialer", "contacts"),
+            "মেসেজ" to listOf("messages", "messaging", "sms"),
+            "প্লে স্টোর" to listOf("play store", "vending"),
+            "ম্যাপস" to listOf("maps"),
+            "ক্যালকুলেটর" to listOf("calculator"),
+            "ঘড়ি" to listOf("clock"),
+            "নোট" to listOf("notes", "keep"),
+            "জিমেইল" to listOf("gmail"),
+            "টেলিগ্রাম" to listOf("telegram"),
+            "ইনস্টাগ্রাম" to listOf("instagram"),
+            "টিকটক" to listOf("tiktok")
+        )
 
         fun getInstance(): AyeshaAccessibilityService? = instanceRef?.get()
 
