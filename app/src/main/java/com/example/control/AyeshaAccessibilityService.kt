@@ -479,6 +479,8 @@ class AyeshaAccessibilityService : AccessibilityService() {
         val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
         private val bengaliAppAliases = mapOf(
+            "ইউটিউব স্টুডিও" to listOf("studio", "yt studio", "youtube studio", "creator"),
+            "ইউটিউব শর্টস" to listOf("youtube"),
             "ইউটিউব" to listOf("youtube"),
             "হোয়াটসঅ্যাপ" to listOf("whatsapp"),
             "ফেসবুক" to listOf("facebook"),

@@ -12,6 +12,7 @@ import com.example.data.SettingsRepository
 import com.example.persona.AyeshaMode
 import com.example.persona.SystemInstructionBuilder
 import com.example.persona.VoiceCatalog
+import com.example.video.LatestShortsDraftStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -55,7 +56,10 @@ class LiveSessionManager(
     private val keystoreManager: KeystoreManager,
     private val settingsRepository: SettingsRepository,
     private val repository: AyeshaRepository,
-    private val phoneControlCoordinator: PhoneControlCoordinator
+    private val phoneControlCoordinator: PhoneControlCoordinator,
+    private val latestShortsDraftStore: LatestShortsDraftStore,
+    private val liveWebSearchService: LiveWebSearchService,
+    private val callAutoMemorySummarizer: CallAutoMemorySummarizer
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -67,6 +71,7 @@ class LiveSessionManager(
     private var timerJob: Job? = null
     private var amplitudeJob: Job? = null
     private var activeCharacterId: String = "default"
+    private val callTranscriptLines = mutableListOf<String>()
 
     private val _callState = MutableStateFlow(LiveCallUiState())
     val callState: StateFlow<LiveCallUiState> = _callState.asStateFlow()
@@ -127,6 +132,7 @@ class LiveSessionManager(
 
             phoneControlCoordinator.beginCallSession()
             videoEncoder.resetThrottle()
+            synchronized(callTranscriptLines) { callTranscriptLines.clear() }
 
             _callState.value = LiveCallUiState(
                 isInCall = true,
@@ -163,7 +169,11 @@ class LiveSessionManager(
                     audioEngine.clearPlaybackQueue()
                 },
                 onTranscriptReceived = { text ->
+                    appendTranscriptLine("User", text)
                     phoneControlCoordinator.handleVoiceTextForSafety(text)
+                },
+                onModelTranscriptReceived = { text ->
+                    appendTranscriptLine("Ayesha", text)
                 },
                 onToolCall = { name, args ->
                     handleToolCall(name, args)
@@ -185,7 +195,7 @@ class LiveSessionManager(
                     systemInstruction = instruction,
                     includeMemoryTools = settings.memoryEnabled,
                     includePhoneControlTools = settings.phoneControlMasterEnabled,
-                    includeGoogleSearch = mode.isIslamicMode,
+                    includeGoogleSearch = false,
                     turnPauseMs = settings.turnPauseMs
                 )
             )
@@ -240,7 +250,54 @@ class LiveSessionManager(
                 val deleted = repository.deleteMemoryByKey(activeCharacterId, key)
                 mapOf("success" to deleted)
             }
+            "web_search" -> {
+                val query = args["query"]?.toString().orEmpty()
+                val apiKey = keystoreManager.getApiKey().orEmpty()
+                liveWebSearchService.search(apiKey, query)
+            }
+            "get_latest_shorts_draft" -> {
+                val draft = latestShortsDraftStore.latestDraft.value
+                if (draft == null) {
+                    mapOf(
+                        "success" to false,
+                        "has_draft" to false,
+                        "message" to "শর্টস ট্যাবে এখনো কোনো ভিডিও বিশ্লেষণ করা হয়নি।"
+                    )
+                } else {
+                    val platformMaps = draft.platformPacks.mapKeys { it.key.id }.mapValues { (_, pack) ->
+                        mapOf(
+                            "selected_title" to pack.selectedTitle,
+                            "alternative_titles" to pack.titles,
+                            "description" to pack.description,
+                            "hashtags" to pack.hashtags.joinToString(" ")
+                        )
+                    }
+                    mapOf(
+                        "success" to true,
+                        "has_draft" to true,
+                        "active_platform" to draft.activePlatform.labelBn,
+                        "video_name" to draft.videoDisplayName,
+                        "selected_title" to draft.selectedTitle,
+                        "alternative_titles" to draft.titles,
+                        "description" to draft.description,
+                        "hashtags" to draft.hashtags.joinToString(" "),
+                        "visual_summary" to draft.visualSummaryBn,
+                        "audio_summary" to draft.audioSummaryBn,
+                        "platforms" to platformMaps
+                    )
+                }
+            }
             else -> phoneControlCoordinator.executeTool(name, args)
+        }
+    }
+
+    private fun appendTranscriptLine(speaker: String, chunk: String) {
+        val clean = chunk.trim()
+        if (clean.isEmpty()) return
+        synchronized(callTranscriptLines) {
+            if (callTranscriptLines.size < 400) {
+                callTranscriptLines.add("$speaker: $clean")
+            }
         }
     }
 
@@ -377,6 +434,12 @@ class LiveSessionManager(
 
         val actions = phoneControlCoordinator.getSessionActionLogs()
         val duration = snapshot.elapsedSeconds
+        val transcriptSnapshot = synchronized(callTranscriptLines) {
+            val joined = callTranscriptLines.joinToString("\n")
+            callTranscriptLines.clear()
+            joined
+        }
+        val charIdSnapshot = activeCharacterId
 
         _callState.value = LiveCallUiState()
 
@@ -389,6 +452,23 @@ class LiveSessionManager(
                     characterName = snapshot.characterName,
                     actions = actions
                 )
+
+                if (duration >= 8L && transcriptSnapshot.length >= 25) {
+                    val settings = settingsRepository.settings.first()
+                    val apiKey = keystoreManager.getApiKey()
+                    if (settings.memoryEnabled && !apiKey.isNullOrBlank()) {
+                        val existingKeys = repository.getMemoriesForCharacter(charIdSnapshot)
+                            .map { it.factKey }
+                        val extracted = callAutoMemorySummarizer.extractMemories(
+                            apiKey = apiKey,
+                            transcript = transcriptSnapshot,
+                            existingKeys = existingKeys
+                        )
+                        extracted.forEach { fact ->
+                            repository.saveMemory(charIdSnapshot, fact.key, fact.value)
+                        }
+                    }
+                }
             }
         }
     }

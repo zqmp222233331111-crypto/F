@@ -49,6 +49,7 @@ class GeminiLiveClient(
     private val onAudioReceived: (ByteArray) -> Unit,
     private val onInterrupted: () -> Unit,
     private val onTranscriptReceived: (String) -> Unit,
+    private val onModelTranscriptReceived: (String) -> Unit = {},
     private val onToolCall: suspend (name: String, args: Map<String, Any?>) -> Map<String, Any?>,
     private val onError: (String) -> Unit
 ) {
@@ -186,7 +187,9 @@ class GeminiLiveClient(
     private fun handleSocketCloseReason(code: Int, reason: String) {
         val lower = reason.lowercase()
         val bnError = when {
-            lower.contains("quota") || lower.contains("rate") || lower.contains("exhausted") ->
+            lower.contains("quota") || lower.contains("resource_exhausted") ||
+                lower.contains("rate limit") || lower.contains("rate_limit") ||
+                lower.contains("too many requests") ->
                 "ফ্রি সীমা শেষ, কিছুক্ষণ পরে চেষ্টা করুন।"
             lower.contains("api key") || lower.contains("permission") || lower.contains("unauthorized") ->
                 "API কী-টি অনুমোদিত নয়। দয়া করে যাচাই করুন।"
@@ -238,6 +241,7 @@ class GeminiLiveClient(
                 }
             )
             .put("inputAudioTranscription", JSONObject())
+            .put("outputAudioTranscription", JSONObject())
             .put(
                 "realtimeInputConfig",
                 JSONObject().put(
@@ -377,6 +381,13 @@ class GeminiLiveClient(
                     val text = sc.getJSONObject("inputTranscription").optString("text")
                     if (text.isNotBlank()) {
                         onTranscriptReceived(text)
+                    }
+                }
+
+                if (sc.has("outputTranscription")) {
+                    val text = sc.getJSONObject("outputTranscription").optString("text")
+                    if (text.isNotBlank()) {
+                        onModelTranscriptReceived(text)
                     }
                 }
 

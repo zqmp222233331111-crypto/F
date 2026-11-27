@@ -1,5 +1,9 @@
 package com.example.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -8,9 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.live.CallType
 import com.example.ui.components.AccessibilityDisclosureDialog
@@ -52,6 +59,7 @@ import com.example.ui.screens.SettingsSafetySubScreen
 import com.example.ui.screens.SettingsSubPage
 import com.example.ui.screens.SettingsThemeAboutSubScreen
 import com.example.ui.screens.SettingsVoiceSubScreen
+import com.example.ui.screens.ShortsAnalyzerScreen
 import com.example.ui.screens.VideoCallScreen
 import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.AyeshaTheme
@@ -65,6 +73,7 @@ enum class MainTab(
     val testTag: String
 ) {
     HOME("হোম", Icons.Filled.Home, Icons.Outlined.Home, "tab_home"),
+    SHORTS("শর্টস", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircle, "tab_shorts"),
     HISTORY("ইতিহাস", Icons.Filled.History, Icons.Outlined.History, "tab_history"),
     SETTINGS("সেটিংস", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings")
 }
@@ -85,6 +94,15 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
     val voiceSampleError by viewModel.voiceSampleError.collectAsStateWithLifecycle()
     val relationshipNoticeMode by viewModel.showRelationshipNoticeMode.collectAsStateWithLifecycle()
     val showAccessibilityDisclosure by viewModel.showAccessibilityDisclosure.collectAsStateWithLifecycle()
+    val shortsAnalyzerState by viewModel.shortsAnalyzerState.collectAsStateWithLifecycle()
+
+    val shortsCallMicLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.startAudioCall()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.refreshPermissions(context)
@@ -349,6 +367,39 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                             },
                                             onStartAudioCall = { viewModel.startAudioCall() },
                                             onStartVideoCall = { viewModel.startVideoCall() },
+                                            onOpenConnectionSettings = {
+                                                currentTab = MainTab.SETTINGS
+                                                activeSettingsSubPage = SettingsSubPage.CONNECTION
+                                            }
+                                        )
+
+                                        MainTab.SHORTS -> ShortsAnalyzerScreen(
+                                            uiState = shortsAnalyzerState,
+                                            isKeyVerified = isKeyVerified,
+                                            isPhoneControlReady = settings.phoneControlMasterEnabled && permissions.isAccessibilityEnabled,
+                                            onVideoPicked = { uri -> viewModel.onShortsVideoPicked(uri) },
+                                            onSelectLanguage = { lang -> viewModel.setShortsLanguage(lang) },
+                                            onCreatorNoteChange = { note -> viewModel.setShortsCreatorNote(note) },
+                                            onAnalyzeClick = { viewModel.analyzeSelectedShortsVideo() },
+                                            onSelectPlatform = { platform -> viewModel.selectShortsPlatform(platform) },
+                                            onSelectTitleOption = { title -> viewModel.selectShortsTitle(title) },
+                                            onTitleEdited = { title -> viewModel.updateShortsTitle(title) },
+                                            onDescriptionEdited = { desc -> viewModel.updateShortsDescription(desc) },
+                                            onStartVoiceAssistCall = {
+                                                val micOk = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                if (micOk) {
+                                                    viewModel.startAudioCall()
+                                                } else {
+                                                    shortsCallMicLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                }
+                                            },
+                                            onOpenPhoneControlSettings = {
+                                                currentTab = MainTab.SETTINGS
+                                                activeSettingsSubPage = SettingsSubPage.PHONE_CONTROL
+                                            },
                                             onOpenConnectionSettings = {
                                                 currentTab = MainTab.SETTINGS
                                                 activeSettingsSubPage = SettingsSubPage.CONNECTION

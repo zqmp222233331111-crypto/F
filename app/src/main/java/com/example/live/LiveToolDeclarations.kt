@@ -19,6 +19,8 @@ object LiveToolDeclarations {
         includeMemoryTools: Boolean,
         includePhoneControlTools: Boolean
     ): List<String> = buildList {
+        add("web_search")
+        add("get_latest_shorts_draft")
         if (includeMemoryTools) {
             add("save_memory")
             add("delete_memory")
@@ -31,10 +33,30 @@ object LiveToolDeclarations {
     fun buildToolsArray(
         includeMemoryTools: Boolean,
         includePhoneControlTools: Boolean,
-        includeGoogleSearch: Boolean
+        @Suppress("UNUSED_PARAMETER") includeGoogleSearch: Boolean
     ): JSONArray {
         val toolsArray = JSONArray()
         val functionDeclarations = JSONArray()
+
+        functionDeclarations.put(
+            fn(
+                name = "web_search",
+                description = "Search Google live for real-time facts: today's news, weather, live sports/cricket scores, product prices, exchange rates, recent events, or verifying Quran/Hadith references. Works in all modes.",
+                properties = mapOf(
+                    "query" to prop("STRING", "Clear search query in Bengali or English")
+                ),
+                required = listOf("query")
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "get_latest_shorts_draft",
+                description = "Fetch the latest analyzed video pack (YouTube Shorts, Facebook Reels, and TikTok titles, descriptions, hashtags, and video/audio summary) so you can read it aloud or type it into YouTube, YouTube Studio, Facebook, or TikTok.",
+                properties = emptyMap(),
+                required = emptyList()
+            )
+        )
 
         if (includeMemoryTools) {
             functionDeclarations.put(
@@ -161,10 +183,6 @@ object LiveToolDeclarations {
 
         if (functionDeclarations.length() > 0) {
             toolsArray.put(JSONObject().put("functionDeclarations", functionDeclarations))
-        }
-
-        if (includeGoogleSearch) {
-            toolsArray.put(JSONObject().put("googleSearch", JSONObject()))
         }
 
         return toolsArray

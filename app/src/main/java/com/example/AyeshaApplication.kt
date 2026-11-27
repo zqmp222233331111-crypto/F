@@ -8,8 +8,12 @@ import com.example.data.AyeshaRepository
 import com.example.data.KeystoreManager
 import com.example.data.SettingsRepository
 import com.example.data.db.AyeshaDatabase
+import com.example.live.CallAutoMemorySummarizer
 import com.example.live.LiveSessionManager
+import com.example.live.LiveWebSearchService
 import com.example.live.VoiceSamplePlayer
+import com.example.video.LatestShortsDraftStore
+import com.example.video.ShortsVideoAnalyzer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,12 +28,19 @@ class AppContainer(context: Context) {
     val settingsRepository = SettingsRepository(appContext)
     val repository = AyeshaRepository(database, settingsRepository, keystoreManager)
     val phoneControlCoordinator = PhoneControlCoordinator(appContext, settingsRepository, repository)
+    val latestShortsDraftStore = LatestShortsDraftStore(appContext)
+    val shortsVideoAnalyzer = ShortsVideoAnalyzer()
+    val liveWebSearchService = LiveWebSearchService()
+    val callAutoMemorySummarizer = CallAutoMemorySummarizer()
     val liveSessionManager = LiveSessionManager(
         context = appContext,
         keystoreManager = keystoreManager,
         settingsRepository = settingsRepository,
         repository = repository,
-        phoneControlCoordinator = phoneControlCoordinator
+        phoneControlCoordinator = phoneControlCoordinator,
+        latestShortsDraftStore = latestShortsDraftStore,
+        liveWebSearchService = liveWebSearchService,
+        callAutoMemorySummarizer = callAutoMemorySummarizer
     )
     val voiceSamplePlayer = VoiceSamplePlayer()
 

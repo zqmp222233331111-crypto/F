@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
@@ -24,12 +25,19 @@ import com.example.live.LiveCallUiState
 import com.example.persona.AyeshaMode
 import com.example.persona.VoiceCatalog
 import com.example.persona.VoiceOption
+import com.example.video.ShortsAnalyzeOutcome
+import com.example.video.ShortsAnalyzerUiState
+import com.example.video.ShortsOutputLanguage
+import com.example.video.ShortsPlatform
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 sealed class ApiKeyVerifyUiState {
@@ -59,6 +67,8 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
     val liveSessionManager = container.liveSessionManager
     val phoneControlCoordinator = container.phoneControlCoordinator
     private val voiceSamplePlayer = container.voiceSamplePlayer
+    private val shortsVideoAnalyzer = container.shortsVideoAnalyzer
+    private val latestShortsDraftStore = container.latestShortsDraftStore
 
     val settings: StateFlow<UserSettings> = settingsRepo.settings
         .stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
@@ -91,6 +101,11 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _showAccessibilityDisclosure = MutableStateFlow(false)
     val showAccessibilityDisclosure: StateFlow<Boolean> = _showAccessibilityDisclosure.asStateFlow()
+
+    private val _shortsAnalyzerState = MutableStateFlow(
+        ShortsAnalyzerUiState(result = latestShortsDraftStore.latestDraft.value)
+    )
+    val shortsAnalyzerState: StateFlow<ShortsAnalyzerUiState> = _shortsAnalyzerState.asStateFlow()
 
     fun hasStoredApiKey(): Boolean = keystore.hasApiKey()
 
@@ -362,7 +377,119 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
             liveSessionManager.endCall()
             DailyGreetingScheduler.setEnabled(getApplication(), false)
             repo.deleteAllAppData()
+            latestShortsDraftStore.clear()
+            _shortsAnalyzerState.value = ShortsAnalyzerUiState()
             _apiKeyVerifyState.value = ApiKeyVerifyUiState.Idle
+        }
+    }
+
+    fun onShortsVideoPicked(uri: Uri) {
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                shortsVideoAnalyzer.inspectVideo(getApplication(), uri)
+            }
+            _shortsAnalyzerState.update {
+                it.copy(
+                    selectedVideoUri = uri.toString(),
+                    selectedVideoName = info.displayName,
+                    selectedVideoSizeBytes = info.sizeBytes,
+                    selectedVideoDurationMs = info.durationMs,
+                    errorMessageBn = null
+                )
+            }
+        }
+    }
+
+    fun setShortsLanguage(language: ShortsOutputLanguage) {
+        _shortsAnalyzerState.update { it.copy(outputLanguage = language) }
+    }
+
+    fun setShortsCreatorNote(note: String) {
+        _shortsAnalyzerState.update { it.copy(creatorNote = note.take(300)) }
+    }
+
+    fun analyzeSelectedShortsVideo() {
+        val current = _shortsAnalyzerState.value
+        val uriString = current.selectedVideoUri ?: return
+        if (current.isAnalyzing) return
+
+        val apiKey = keystore.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            _shortsAnalyzerState.update {
+                it.copy(errorMessageBn = "প্রথমে যাচাইকৃত Gemini API কী যোগ করুন।")
+            }
+            return
+        }
+
+        val parsedUri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return
+        viewModelScope.launch {
+            _shortsAnalyzerState.update {
+                it.copy(
+                    isAnalyzing = true,
+                    progressMessageBn = "প্রস্তুত করা হচ্ছে...",
+                    errorMessageBn = null
+                )
+            }
+            val outcome = shortsVideoAnalyzer.analyzeVideo(
+                context = getApplication(),
+                apiKey = apiKey,
+                videoUri = parsedUri,
+                language = current.outputLanguage,
+                creatorNote = current.creatorNote,
+                onProgress = { msg ->
+                    _shortsAnalyzerState.update { it.copy(progressMessageBn = msg) }
+                }
+            )
+            when (outcome) {
+                is ShortsAnalyzeOutcome.Success -> {
+                    latestShortsDraftStore.save(outcome.result)
+                    _shortsAnalyzerState.update {
+                        it.copy(
+                            isAnalyzing = false,
+                            progressMessageBn = "",
+                            errorMessageBn = null,
+                            result = outcome.result
+                        )
+                    }
+                }
+                is ShortsAnalyzeOutcome.Failure -> {
+                    _shortsAnalyzerState.update {
+                        it.copy(
+                            isAnalyzing = false,
+                            progressMessageBn = "",
+                            errorMessageBn = outcome.messageBn
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun selectShortsPlatform(platform: ShortsPlatform) {
+        latestShortsDraftStore.selectPlatform(platform)
+        _shortsAnalyzerState.update { state ->
+            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result?.copy(activePlatform = platform))
+        }
+    }
+
+    fun selectShortsTitle(title: String) {
+        latestShortsDraftStore.updateSelectedTitle(title)
+        _shortsAnalyzerState.update { state ->
+            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
+        }
+    }
+
+    fun updateShortsTitle(title: String) {
+        latestShortsDraftStore.updateSelectedTitle(title)
+        _shortsAnalyzerState.update { state ->
+            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
+        }
+    }
+
+    fun updateShortsDescription(description: String) {
+        latestShortsDraftStore.updateDescription(description)
+        _shortsAnalyzerState.update { state ->
+            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
         }
     }
 
