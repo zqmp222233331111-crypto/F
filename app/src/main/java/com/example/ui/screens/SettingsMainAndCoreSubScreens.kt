@@ -21,21 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,6 +66,7 @@ import com.example.persona.VoiceOption
 import com.example.ui.ApiKeyVerifyUiState
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.CustomCharacterEditorDialog
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SubScreenTopBar
@@ -126,7 +118,7 @@ fun SettingsHomeScreen(
                 )
 
                 SettingsGroupItem(
-                    icon = Icons.Default.Key,
+                    icon = AyeshaIcons.Key,
                     title = "১. সংযোগ",
                     subtitle = if (isKeyVerified) "API কী প্রস্তুত" else "API কী যোগ করুন",
                     accent = if (isKeyVerified) TealSuccess else AmberWarning,
@@ -134,7 +126,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.CONNECTION) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.GraphicEq,
+                    icon = AyeshaIcons.GraphicEq,
                     title = "২. কণ্ঠ",
                     subtitle = activeVoice.labelBn,
                     accent = MaterialTheme.colorScheme.primary,
@@ -150,7 +142,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.PERSONA) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.Psychology,
+                    icon = AyeshaIcons.Psychology,
                     title = "৪. স্মৃতি",
                     subtitle = if (settings.memoryEnabled) "স্মৃতি সংরক্ষণ চালু" else "স্মৃতি সংরক্ষণ বন্ধ",
                     accent = if (settings.memoryEnabled) TealSuccess else AmberWarning,
@@ -158,7 +150,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.MEMORY) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.PhoneAndroid,
+                    icon = AyeshaIcons.PhoneAndroid,
                     title = "৫. ফোন নিয়ন্ত্রণ",
                     subtitle = if (settings.phoneControlMasterEnabled) "প্রধান সুইচ চালু" else "বন্ধ আছে",
                     accent = if (settings.phoneControlMasterEnabled) TealSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -166,7 +158,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.PHONE_CONTROL) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.Security,
+                    icon = AyeshaIcons.Security,
                     title = "৬. নিরাপত্তা",
                     subtitle = "অনুমতি নিশ্চিতকরণ ও ব্লক করা অ্যাপ",
                     accent = AmberWarning,
@@ -174,7 +166,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.SAFETY) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.BatterySaver,
+                    icon = AyeshaIcons.BatterySaver,
                     title = "৭. পারমিশন ও ব্যাটারি",
                     subtitle = "অনুমতির অবস্থা ও Samsung নির্দেশিকা",
                     accent = TealSuccess,
@@ -182,7 +174,7 @@ fun SettingsHomeScreen(
                     onClick = { onOpenSubPage(SettingsSubPage.PERMISSIONS_BATTERY) }
                 )
                 SettingsGroupItem(
-                    icon = Icons.Default.Palette,
+                    icon = AyeshaIcons.Palette,
                     title = "৮. থিম ও তথ্য",
                     subtitle = "রঙ: ${settings.accentTheme.labelBn}, সাহায্য ও ডেটা মুছুন",
                     accent = MaterialTheme.colorScheme.primary,
@@ -332,7 +324,7 @@ fun SettingsConnectionSubScreen(
                     onClick = { SystemIntentUtils.openUrl(context, "https://aistudio.google.com/apikey") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(AyeshaIcons.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Google AI Studio থেকে ফ্রি কী নিন")
                 }
@@ -446,7 +438,7 @@ private fun VoiceRowCard(
                     .testTag("play_voice_${voice.name}")
             ) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    imageVector = if (isPlaying) AyeshaIcons.Stop else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "থামান" else "নমুনা শুনুন",
                     tint = if (isPlaying) RoseDanger else MaterialTheme.colorScheme.primary
                 )

@@ -35,7 +35,7 @@ import kotlin.coroutines.resume
 object VideoCompressor {
 
     const val COMPRESS_THRESHOLD_BYTES = 12L * 1024L * 1024L
-    private const val COMPRESSION_TIMEOUT_MS = 180_000L
+    private const val COMPRESSION_TIMEOUT_MS = 240_000L
 
     fun shouldCompress(sizeBytes: Long): Boolean = sizeBytes > COMPRESS_THRESHOLD_BYTES
 
@@ -191,9 +191,7 @@ object VideoCompressor {
                     } else if (state == Transformer.PROGRESS_STATE_WAITING_FOR_AVAILABILITY) {
                         onProgress("ভিডিও প্রস্তুত হচ্ছে...")
                     }
-                    if (!finished && state != Transformer.PROGRESS_STATE_NOT_STARTED) {
-                        mainHandler.postDelayed(this, 400L)
-                    } else if (!finished) {
+                    if (!finished) {
                         mainHandler.postDelayed(this, 400L)
                     }
                 }

@@ -18,10 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,6 +41,7 @@ import com.example.data.AyeshaRepository
 import com.example.data.db.CallHistoryEntity
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatDurationBn
 import com.example.ui.theme.NavySurfaceHigh
@@ -90,7 +87,7 @@ fun HistoryScreen(
                             onClick = { confirmClearAll = true },
                             modifier = Modifier.testTag("history_clear_all")
                         ) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = RoseDanger)
+                            Icon(AyeshaIcons.DeleteSweep, contentDescription = null, tint = RoseDanger)
                             Spacer(Modifier.width(4.dp))
                             Text("সব মুছুন", color = RoseDanger)
                         }
@@ -112,7 +109,7 @@ fun HistoryScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
-                                imageVector = Icons.Default.History,
+                                imageVector = AyeshaIcons.History,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(48.dp)
@@ -203,7 +200,7 @@ private fun HistoryItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                imageVector = if (isVideo) AyeshaIcons.Videocam else Icons.Default.Call,
                 contentDescription = null,
                 tint = if (isVideo) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(26.dp)
@@ -243,7 +240,7 @@ private fun HistoryItemCard(
                 actions.forEach { act ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (act.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                            imageVector = if (act.success) Icons.Default.CheckCircle else AyeshaIcons.Error,
                             contentDescription = null,
                             tint = if (act.success) TealSuccess else RoseDanger,
                             modifier = Modifier.size(16.dp)

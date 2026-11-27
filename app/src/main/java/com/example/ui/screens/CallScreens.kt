@@ -28,19 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BluetoothAudio
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.PhoneInTalk
-import androidx.compose.material.icons.filled.PresentToAll
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.StopScreenShare
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -71,6 +58,7 @@ import com.example.live.LiveCallStatus
 import com.example.live.LiveCallUiState
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.AyeshaOrb
 import com.example.ui.components.OrbVisualState
 import com.example.ui.components.StatusBadge
@@ -189,7 +177,7 @@ fun AudioCallScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CallCircleButton(
-                    icon = if (callState.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                    icon = if (callState.isMuted) AyeshaIcons.MicOff else AyeshaIcons.Mic,
                     label = if (callState.isMuted) "আনমিউট" else "মিউট",
                     active = callState.isMuted,
                     activeColor = AmberWarning,
@@ -199,9 +187,9 @@ fun AudioCallScreen(
 
                 CallCircleButton(
                     icon = when (callState.audioRoute) {
-                        AudioRoute.SPEAKER -> Icons.Default.VolumeUp
-                        AudioRoute.BLUETOOTH -> Icons.Default.BluetoothAudio
-                        AudioRoute.EARPIECE -> Icons.Default.PhoneInTalk
+                        AudioRoute.SPEAKER -> AyeshaIcons.VolumeUp
+                        AudioRoute.BLUETOOTH -> AyeshaIcons.BluetoothAudio
+                        AudioRoute.EARPIECE -> AyeshaIcons.PhoneInTalk
                     },
                     label = when (callState.audioRoute) {
                         AudioRoute.SPEAKER -> "স্পিকার"
@@ -215,7 +203,7 @@ fun AudioCallScreen(
                 )
 
                 CallCircleButton(
-                    icon = if (callState.isScreenSharing) Icons.Default.StopScreenShare else Icons.Default.PresentToAll,
+                    icon = if (callState.isScreenSharing) AyeshaIcons.StopScreenShare else AyeshaIcons.PresentToAll,
                     label = if (callState.isScreenSharing) "শেয়ার বন্ধ" else "স্ক্রিন",
                     active = callState.isScreenSharing,
                     activeColor = TealSuccess,
@@ -246,7 +234,7 @@ fun AudioCallScreen(
                             .testTag("end_call_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CallEnd,
+                            imageVector = AyeshaIcons.CallEnd,
                             contentDescription = "কল কাটুন",
                             modifier = Modifier.size(30.dp)
                         )
@@ -399,7 +387,7 @@ fun VideoCallScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CallCircleButton(
-                        icon = Icons.Default.Cameraswitch,
+                        icon = AyeshaIcons.Cameraswitch,
                         label = "ঘোরান",
                         active = false,
                         activeColor = MaterialTheme.colorScheme.primary,
@@ -407,7 +395,7 @@ fun VideoCallScreen(
                         onClick = onSwitchCamera
                     )
                     CallCircleButton(
-                        icon = if (callState.isCameraOn) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                        icon = if (callState.isCameraOn) AyeshaIcons.Videocam else AyeshaIcons.VideocamOff,
                         label = if (callState.isCameraOn) "ক্যামেরা" else "বন্ধ",
                         active = !callState.isCameraOn,
                         activeColor = AmberWarning,
@@ -415,7 +403,7 @@ fun VideoCallScreen(
                         onClick = onToggleCamera
                     )
                     CallCircleButton(
-                        icon = if (callState.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        icon = if (callState.isMuted) AyeshaIcons.MicOff else AyeshaIcons.Mic,
                         label = if (callState.isMuted) "আনমিউট" else "মিউট",
                         active = callState.isMuted,
                         activeColor = AmberWarning,
@@ -423,7 +411,7 @@ fun VideoCallScreen(
                         onClick = onToggleMute
                     )
                     CallCircleButton(
-                        icon = if (callState.isScreenSharing) Icons.Default.StopScreenShare else Icons.Default.PresentToAll,
+                        icon = if (callState.isScreenSharing) AyeshaIcons.StopScreenShare else AyeshaIcons.PresentToAll,
                         label = if (callState.isScreenSharing) "শেয়ার বন্ধ" else "স্ক্রিন",
                         active = callState.isScreenSharing,
                         activeColor = TealSuccess,
@@ -453,7 +441,7 @@ fun VideoCallScreen(
                                 .size(54.dp)
                                 .testTag("video_end_call")
                         ) {
-                            Icon(Icons.Default.CallEnd, contentDescription = "কল কাটুন")
+                            Icon(AyeshaIcons.CallEnd, contentDescription = "কল কাটুন")
                         }
                         Spacer(Modifier.height(4.dp))
                         Text("শেষ", style = MaterialTheme.typography.labelMedium)
@@ -539,7 +527,7 @@ private fun PhoneControlCallOverlayCards(
                         .height(48.dp)
                         .testTag("stop_task_red_button")
                 ) {
-                    Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(AyeshaIcons.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("থামো", fontWeight = FontWeight.Bold)
                 }

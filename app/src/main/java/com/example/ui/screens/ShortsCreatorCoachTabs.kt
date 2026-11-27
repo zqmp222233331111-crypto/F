@@ -15,16 +15,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.db.CreatorAuditEntity
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.StatusBadge
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -167,7 +161,7 @@ fun VideoDoctorDiagnosticsCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Bolt,
+                            imageVector = AyeshaIcons.Bolt,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
@@ -217,7 +211,7 @@ fun VideoDoctorDiagnosticsCard(
                                     onShowMessage("থাম্বনেইল লেখা কপি হয়েছে!")
                                 }
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "কভার লেখা কপি", modifier = Modifier.size(18.dp))
+                                Icon(AyeshaIcons.ContentCopy, contentDescription = "কভার লেখা কপি", modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -236,13 +230,13 @@ fun VideoDoctorDiagnosticsCard(
                                     onShowMessage("পিন কমেন্ট কপি হয়েছে!")
                                 }
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "কমেন্ট কপি", modifier = Modifier.size(18.dp))
+                                Icon(AyeshaIcons.ContentCopy, contentDescription = "কমেন্ট কপি", modifier = Modifier.size(18.dp))
                             }
                         }
                     }
                     if (diagnostics.bestUploadWindowBn.isNotBlank()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Schedule, contentDescription = null, tint = TealSuccess, modifier = Modifier.size(16.dp))
+                            Icon(AyeshaIcons.Schedule, contentDescription = null, tint = TealSuccess, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = "সেরা আপলোড সময়: ${diagnostics.bestUploadWindowBn}",
@@ -263,7 +257,7 @@ fun VideoDoctorDiagnosticsCard(
                 .height(48.dp)
                 .testTag("doctor_check_trends_button")
         ) {
-            Icon(Icons.Default.TrendingUp, contentDescription = null)
+            Icon(AyeshaIcons.TrendingUp, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("এই ধরনের লাইভ ভাইরাল ট্রেন্ড দেখুন")
         }
@@ -357,7 +351,7 @@ fun TrendRadarTabContent(
 
     AyeshaCard(highlightBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(AyeshaIcons.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "লাইভ ভাইরাল ট্রেন্ড রাডার",
@@ -454,7 +448,7 @@ fun TrendRadarTabContent(
                 Spacer(Modifier.width(10.dp))
                 Text("লাইভ ট্রেন্ড খোঁজা হচ্ছে...")
             } else {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                Icon(AyeshaIcons.AutoAwesome, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("আজকের ভাইরাল ট্রেন্ড খুঁজুন")
             }
@@ -488,7 +482,7 @@ fun TrendRadarTabContent(
             Text(result.trendSummaryBn, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Schedule, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(16.dp))
+                Icon(AyeshaIcons.Schedule, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = "সেরা সময়: ${result.bestTimingBn}",
@@ -550,7 +544,7 @@ fun TrendRadarTabContent(
                                         },
                                         modifier = Modifier.height(36.dp)
                                     ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(AyeshaIcons.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(Modifier.width(4.dp))
                                         Text("কপি", style = MaterialTheme.typography.labelSmall)
                                     }
@@ -605,7 +599,7 @@ fun CreatorGrowthLogTabContent(
             }
             if (audits.isNotEmpty()) {
                 IconButton(onClick = onDeleteAllAudits) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "সব লগ মুছুন", tint = RoseDanger)
+                    Icon(AyeshaIcons.DeleteSweep, contentDescription = "সব লগ মুছুন", tint = RoseDanger)
                 }
             }
         }
@@ -634,7 +628,7 @@ fun CreatorGrowthLogTabContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Analytics,
+                    imageVector = AyeshaIcons.Analytics,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(36.dp)

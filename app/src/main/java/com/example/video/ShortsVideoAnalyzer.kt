@@ -462,7 +462,6 @@ class ShortsVideoAnalyzer(
 
         val buffer = ByteArray(chunkSizeBytes)
         var offset = 0L
-        val totalMb = totalSizeBytes / (1024f * 1024f)
 
         BufferedInputStream(rawStream, 64 * 1024).use { stream ->
             while (true) {
@@ -485,9 +484,7 @@ class ShortsVideoAnalyzer(
                 )
 
                 offset += bytesRead
-                val pct = ((offset * 100.0) / totalSizeBytes.coerceAtLeast(offset)).toInt().coerceIn(1, 100)
-                val sentMb = offset / (1024f * 1024f)
-                onProgress("আপলোড হচ্ছে $pct% (%.1f/%.1f MB)".format(sentMb, totalMb))
+                onProgress(formatUploadProgress(offset, totalSizeBytes))
 
                 if (isFinalChunk) {
                     return parseUploadedFileMeta(responseBody)
@@ -506,7 +503,6 @@ class ShortsVideoAnalyzer(
         mimeType: String,
         onProgress: (String) -> Unit
     ): UploadedFileMeta {
-        val totalMb = totalSizeBytes / (1024f * 1024f)
         val streamingBody = object : RequestBody() {
             override fun contentType() = mimeType.toMediaType()
             override fun contentLength() = totalSizeBytes
@@ -525,8 +521,7 @@ class ShortsVideoAnalyzer(
                         val pct = ((sent * 100.0) / totalSizeBytes.coerceAtLeast(1L)).toInt().coerceIn(1, 100)
                         if (pct - lastReportedPct >= 10 || pct == 100) {
                             lastReportedPct = pct
-                            val sentMb = sent / (1024f * 1024f)
-                            onProgress("আপলোড হচ্ছে $pct% (%.1f/%.1f MB)".format(sentMb, totalMb))
+                            onProgress(formatUploadProgress(sent, totalSizeBytes))
                         }
                     }
                 }
@@ -749,6 +744,14 @@ class ShortsVideoAnalyzer(
         private val mapAdapter = moshi.adapter<Map<String, Any?>>(
             Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java)
         )
+
+        fun formatUploadProgress(offsetBytes: Long, totalBytes: Long): String {
+            val safeTotal = totalBytes.coerceAtLeast(offsetBytes).coerceAtLeast(1L)
+            val pct = ((offsetBytes * 100.0) / safeTotal).toInt().coerceIn(1, 100)
+            val sentMb = "%.1f".format(java.util.Locale.US, offsetBytes / (1024f * 1024f))
+            val totalMb = "%.1f".format(java.util.Locale.US, safeTotal / (1024f * 1024f))
+            return "আপলোড হচ্ছে $pct% ($sentMb/$totalMb MB)"
+        }
 
         fun computeAlignedChunkSize(granularityBytes: Long): Int {
             if (granularityBytes <= 0L) return UPLOAD_CHUNK_BYTES
@@ -986,12 +989,18 @@ class ShortsVideoAnalyzer(
                 val content = firstCandidate["content"] as? Map<String, Any?> ?: return null
                 val parts = content["parts"] as? List<*> ?: return null
 
-                val rawText = parts
+                val nonThoughtParts = parts.filter { part ->
+                    val map = part as? Map<*, *> ?: return@filter false
+                    (map["thought"] as? Boolean) != true
+                }
+                val activeParts = nonThoughtParts.ifEmpty { parts }
+
+                val rawText = activeParts
                     .mapNotNull { (it as? Map<*, *>)?.get("text") as? String }
                     .joinToString("")
                     .trim()
 
-                val cleanJson = stripMarkdownFences(rawText)
+                val cleanJson = extractJsonPayload(stripMarkdownFences(rawText))
                 val payload = mapAdapter.fromJson(cleanJson) ?: return null
 
                 val packs = mutableMapOf<ShortsPlatform, PlatformPackItem>()
@@ -1090,6 +1099,12 @@ class ShortsVideoAnalyzer(
             } catch (_: Exception) {
                 null
             }
+        }
+
+        private fun extractJsonPayload(text: String): String {
+            val start = text.indexOf('{')
+            val end = text.lastIndexOf('}')
+            return if (start >= 0 && end > start) text.substring(start, end + 1) else text
         }
 
         private fun stripMarkdownFences(text: String): String {

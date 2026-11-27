@@ -124,6 +124,24 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
     )
     val trendRadarState: StateFlow<TrendRadarUiState> = _trendRadarState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            latestShortsDraftStore.latestDraft.collect { draft ->
+                if (draft != null) {
+                    if (_shortsAnalyzerState.value.result == null) {
+                        _shortsAnalyzerState.update { it.copy(result = draft) }
+                    }
+                    val category = draft.diagnostics?.detectedCategoryBn.orEmpty()
+                    if (_trendRadarState.value.nicheQuery.isBlank() && category.isNotBlank()) {
+                        _trendRadarState.update {
+                            it.copy(nicheQuery = category)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fun hasStoredApiKey(): Boolean = keystore.hasApiKey()
 
     fun getMaskedApiKeyPreview(): String {

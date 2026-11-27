@@ -60,9 +60,18 @@ class VideoFrameEncoder {
             imageProxy.height,
             null
         )
-        val rawOut = ByteArrayOutputStream()
+        val rawOut = ByteArrayOutputStream(32 * 1024)
         yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 82, rawOut)
-        val decoded = BitmapFactory.decodeByteArray(rawOut.toByteArray(), 0, rawOut.size())
+        val maxDim = maxOf(imageProxy.width, imageProxy.height)
+        var sample = 1
+        while (maxDim / (sample * 2) >= MAX_FRAME_DIM) {
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.RGB_565
+            inSampleSize = sample
+        }
+        val decoded = BitmapFactory.decodeByteArray(rawOut.toByteArray(), 0, rawOut.size(), opts)
             ?: return null
 
         val rotation = imageProxy.imageInfo.rotationDegrees
@@ -81,8 +90,8 @@ class VideoFrameEncoder {
         val maxDim = MAX_FRAME_DIM
         val width = source.width
         val height = source.height
-        val scale = minOf(1f, maxDim.toFloat() / maxOf(width, height).toFloat())
-        val target = if (scale < 0.99f) {
+        val target = if (maxOf(width, height) > maxDim) {
+            val scale = maxDim.toFloat() / maxOf(width, height).toFloat()
             Bitmap.createScaledBitmap(
                 source,
                 (width * scale).toInt().coerceAtLeast(1),
@@ -93,7 +102,7 @@ class VideoFrameEncoder {
             source
         }
 
-        val out = ByteArrayOutputStream()
+        val out = ByteArrayOutputStream(32 * 1024)
         target.compress(Bitmap.CompressFormat.JPEG, 72, out)
         target.recycle()
         return out.toByteArray()

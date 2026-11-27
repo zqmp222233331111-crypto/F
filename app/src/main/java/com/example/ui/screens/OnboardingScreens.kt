@@ -21,17 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +58,7 @@ import com.example.ui.ApiKeyVerifyUiState
 import com.example.ui.PermissionSnapshot
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.AyeshaOrb
 import com.example.ui.components.OrbVisualState
 import com.example.ui.components.StatusBadge
@@ -207,7 +199,7 @@ fun ApiKeyScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Key,
+                            imageVector = AyeshaIcons.Key,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -252,7 +244,7 @@ fun ApiKeyScreen(
                                     modifier = Modifier.testTag("toggle_key_visibility")
                                 ) {
                                     Icon(
-                                        imageVector = if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        imageVector = if (showKey) AyeshaIcons.VisibilityOff else AyeshaIcons.Visibility,
                                         contentDescription = if (showKey) "লুকান" else "দেখুন"
                                     )
                                 }
@@ -265,7 +257,7 @@ fun ApiKeyScreen(
                                     modifier = Modifier.testTag("paste_api_key_button")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.ContentPaste,
+                                        imageVector = AyeshaIcons.ContentPaste,
                                         contentDescription = "পেস্ট করুন"
                                     )
                                 }
@@ -370,7 +362,7 @@ fun ApiKeyScreen(
                             .fillMaxWidth()
                             .testTag("open_aistudio_link")
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(AyeshaIcons.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Google AI Studio থেকে ফ্রি কী নিন")
                     }
@@ -449,7 +441,7 @@ fun PermissionsSetupScreen(
                 )
 
                 PermissionSetupCard(
-                    icon = Icons.Default.Mic,
+                    icon = AyeshaIcons.Mic,
                     title = "মাইক্রোফোন (কলের জন্য আবশ্যক)",
                     description = "আয়শার সাথে সরাসরি কথা বলার জন্য মাইক্রোফোনের অনুমতি প্রয়োজন।",
                     granted = permissions.hasMic,
@@ -458,7 +450,7 @@ fun PermissionsSetupScreen(
                 )
 
                 PermissionSetupCard(
-                    icon = Icons.Default.Videocam,
+                    icon = AyeshaIcons.Videocam,
                     title = "ক্যামেরা (ভিডিও কল)",
                     description = "ভিডিও কলে আয়শাকে আপনার চারপাশ বা কোনো বস্তু দেখাতে ক্যামেরা ব্যবহৃত হয়।",
                     granted = permissions.hasCamera,
@@ -482,7 +474,7 @@ fun PermissionsSetupScreen(
                 )
 
                 PermissionSetupCard(
-                    icon = Icons.Default.BatteryChargingFull,
+                    icon = AyeshaIcons.BatteryChargingFull,
                     title = "ব্যাটারি অপ্টিমাইজেশন ছাড়",
                     description = "ব্যাকগ্রাউন্ডে দীর্ঘ কল চলাকালে স্যামসাং ও অ্যান্ড্রয়েড সিস্টেম যেন অ্যাপটি বন্ধ না করে।",
                     granted = permissions.ignoringBatteryOptimizations,
@@ -563,7 +555,7 @@ private fun PermissionSetupCard(
                 }
                 if (secondaryLabel != null && onSecondary != null) {
                     OutlinedButton(onClick = onSecondary) {
-                        Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(AyeshaIcons.Layers, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(secondaryLabel)
                     }

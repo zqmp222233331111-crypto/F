@@ -22,33 +22,37 @@ import kotlinx.coroutines.launch
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val keystoreManager = KeystoreManager(appContext)
-    val apiKeyVerifier = ApiKeyVerifier()
-    val database = AyeshaDatabase.getInstance(appContext)
-    val settingsRepository = SettingsRepository(appContext)
-    val repository = AyeshaRepository(database, settingsRepository, keystoreManager)
-    val phoneControlCoordinator = PhoneControlCoordinator(appContext, settingsRepository, repository)
-    val latestShortsDraftStore = LatestShortsDraftStore(appContext)
-    val shortsVideoAnalyzer = ShortsVideoAnalyzer()
-    val trendRadarService = TrendRadarService()
-    val liveWebSearchService = LiveWebSearchService()
-    val callAutoMemorySummarizer = CallAutoMemorySummarizer()
-    val liveSessionManager = LiveSessionManager(
-        context = appContext,
-        keystoreManager = keystoreManager,
-        settingsRepository = settingsRepository,
-        repository = repository,
-        phoneControlCoordinator = phoneControlCoordinator,
-        latestShortsDraftStore = latestShortsDraftStore,
-        liveWebSearchService = liveWebSearchService,
-        callAutoMemorySummarizer = callAutoMemorySummarizer,
-        trendRadarService = trendRadarService
-    )
-    val voiceSamplePlayer = VoiceSamplePlayer()
+    val keystoreManager by lazy(LazyThreadSafetyMode.NONE) { KeystoreManager(appContext) }
+    val apiKeyVerifier by lazy(LazyThreadSafetyMode.NONE) { ApiKeyVerifier() }
+    val database by lazy(LazyThreadSafetyMode.NONE) { AyeshaDatabase.getInstance(appContext) }
+    val settingsRepository by lazy(LazyThreadSafetyMode.NONE) { SettingsRepository(appContext) }
+    val repository by lazy(LazyThreadSafetyMode.NONE) { AyeshaRepository(database, settingsRepository, keystoreManager) }
+    val phoneControlCoordinator by lazy { PhoneControlCoordinator(appContext, settingsRepository, repository) }
+    val latestShortsDraftStore by lazy { LatestShortsDraftStore(appContext) }
+    val shortsVideoAnalyzer by lazy(LazyThreadSafetyMode.NONE) { ShortsVideoAnalyzer() }
+    val trendRadarService by lazy(LazyThreadSafetyMode.NONE) { TrendRadarService() }
+    val liveWebSearchService by lazy(LazyThreadSafetyMode.NONE) { LiveWebSearchService() }
+    val callAutoMemorySummarizer by lazy(LazyThreadSafetyMode.NONE) { CallAutoMemorySummarizer() }
+    val liveSessionManager by lazy {
+        LiveSessionManager(
+            context = appContext,
+            keystoreManager = keystoreManager,
+            settingsRepository = settingsRepository,
+            repository = repository,
+            phoneControlCoordinator = phoneControlCoordinator,
+            latestShortsDraftStore = latestShortsDraftStore,
+            liveWebSearchService = liveWebSearchService,
+            callAutoMemorySummarizer = callAutoMemorySummarizer,
+            trendRadarService = trendRadarService
+        )
+    }
+    val voiceSamplePlayer by lazy(LazyThreadSafetyMode.NONE) { VoiceSamplePlayer() }
 
     init {
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        ioScope.launch {
+            latestShortsDraftStore.preload()
             repository.ensureDefaultBlockedAppsSeeded()
         }
     }

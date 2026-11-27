@@ -203,6 +203,14 @@ class AyeshaCoreTests {
         assertEquals(854, com.example.video.VideoCompressor.targetPresentationHeight(1080, 1920, 0))
         assertEquals(480, com.example.video.VideoCompressor.targetPresentationHeight(1920, 1080, 0))
         assertEquals(800_000, com.example.video.VideoCompressor.targetBitrateForDuration(300_000L))
+        assertEquals(
+            "আপলোড হচ্ছে 100% (2.0/2.0 MB)",
+            ShortsVideoAnalyzer.formatUploadProgress(2L * 1024L * 1024L, 2L * 1024L * 1024L)
+        )
+        assertEquals(
+            "আপলোড হচ্ছে 50% (17.5/35.0 MB)",
+            ShortsVideoAnalyzer.formatUploadProgress(18_350_080L, 36_700_160L)
+        )
 
         val mockRecoveryClient = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->

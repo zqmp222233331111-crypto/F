@@ -24,14 +24,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -65,6 +61,7 @@ import com.example.persona.AyeshaMode
 import com.example.persona.VoiceCatalog
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.AyeshaOrb
 import com.example.ui.components.CustomCharacterEditorDialog
 import com.example.ui.components.MAX_CUSTOM_DESCRIPTION_CHARS
@@ -337,7 +334,7 @@ fun HomeScreen(
                             .testTag("video_call_button")
                     ) {
                         Icon(
-                            imageVector = if (isKeyVerified) Icons.Default.Videocam else Icons.Default.Lock,
+                            imageVector = if (isKeyVerified) AyeshaIcons.Videocam else Icons.Default.Lock,
                             contentDescription = null,
                             tint = if (isKeyVerified) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(22.dp)
@@ -600,7 +597,7 @@ fun HomeScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.height(48.dp)
                             ) {
-                                Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(AyeshaIcons.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("আরও")
                             }
@@ -619,7 +616,7 @@ fun HomeScreen(
                     Spacer(Modifier.height(10.dp))
                     AyeshaCard(highlightBorder = TealSuccess.copy(alpha = 0.55f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = TealSuccess)
+                            Icon(AyeshaIcons.AutoAwesome, contentDescription = null, tint = TealSuccess)
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = "ইসলামিক মোড সক্রিয় • Google Search গ্রাউন্ডিং চালু",
@@ -640,7 +637,7 @@ fun HomeScreen(
                     Spacer(Modifier.height(10.dp))
                     AyeshaCard(highlightBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(AyeshaIcons.PhoneAndroid, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = "ফোন নিয়ন্ত্রণ সক্রিয় আছে",

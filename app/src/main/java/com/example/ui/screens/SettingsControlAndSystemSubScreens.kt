@@ -23,9 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,6 +55,7 @@ import com.example.data.db.BlockedAppEntity
 import com.example.ui.PermissionSnapshot
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SubScreenTopBar
 import com.example.ui.components.SystemIntentUtils
@@ -158,7 +156,7 @@ fun SettingsPhoneControlSubScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Keyboard, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(AyeshaIcons.Keyboard, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text("আয়শা কিবোর্ড (এজেন্ট IME)", style = MaterialTheme.typography.titleMedium)
                         }
@@ -252,7 +250,7 @@ fun SettingsSafetySubScreen(
 
                 AyeshaCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Shield, contentDescription = null, tint = AmberWarning)
+                        Icon(AyeshaIcons.Shield, contentDescription = null, tint = AmberWarning)
                         Spacer(Modifier.width(8.dp))
                         Text("পাসওয়ার্ড, ওটিপি ও লক স্ক্রিন সুরক্ষা", style = MaterialTheme.typography.titleMedium)
                     }
@@ -544,7 +542,7 @@ fun SettingsThemeAboutSubScreen(
                         .height(52.dp)
                         .testTag("delete_all_app_data_button")
                 ) {
-                    Icon(Icons.Default.DeleteForever, contentDescription = null, tint = RoseDanger)
+                    Icon(AyeshaIcons.DeleteForever, contentDescription = null, tint = RoseDanger)
                     Spacer(Modifier.width(8.dp))
                     Text("অ্যাপের সব ডেটা মুছে ফেলুন", color = RoseDanger)
                 }

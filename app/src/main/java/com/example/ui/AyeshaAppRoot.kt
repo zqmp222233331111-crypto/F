@@ -4,20 +4,27 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -33,15 +40,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
 import com.example.live.CallType
 import com.example.ui.components.AccessibilityDisclosureDialog
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.RelationshipNoticeDialog
 import com.example.ui.components.SystemIntentUtils
 import com.example.ui.screens.ApiKeyScreen
@@ -65,6 +80,7 @@ import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.AyeshaTheme
 import com.example.ui.theme.NavyDeep
 import com.example.ui.theme.NavySurface
+import kotlinx.coroutines.delay
 
 enum class MainTab(
     val titleBn: String,
@@ -72,10 +88,10 @@ enum class MainTab(
     val unselectedIcon: ImageVector,
     val testTag: String
 ) {
-    HOME("হোম", Icons.Filled.Home, Icons.Outlined.Home, "tab_home"),
-    SHORTS("শর্টস", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircle, "tab_shorts"),
-    HISTORY("ইতিহাস", Icons.Filled.History, Icons.Outlined.History, "tab_history"),
-    SETTINGS("সেটিংস", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings")
+    HOME("হোম", Icons.Filled.Home, AyeshaIcons.HomeOutlined, "tab_home"),
+    SHORTS("শর্টস", AyeshaIcons.PlayCircle, AyeshaIcons.PlayCircleOutlined, "tab_shorts"),
+    HISTORY("ইতিহাস", AyeshaIcons.History, AyeshaIcons.History, "tab_history"),
+    SETTINGS("সেটিংস", Icons.Filled.Settings, AyeshaIcons.SettingsOutlined, "tab_settings")
 }
 
 @Composable
@@ -114,8 +130,15 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
 
     var currentTab by remember { mutableStateOf(MainTab.HOME) }
     var activeSettingsSubPage by remember { mutableStateOf<SettingsSubPage?>(null) }
+    var showLaunchSplash by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(1450)
+        showLaunchSplash = false
+    }
 
     AyeshaTheme(accentTheme = settings.accentTheme) {
+        Box(modifier = Modifier.fillMaxSize()) {
         when {
             callState.isInCall && callState.callType == CallType.AUDIO -> {
                 AudioCallScreen(
@@ -456,6 +479,69 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                 },
                 onDismiss = { viewModel.dismissAccessibilityDisclosure() }
             )
+        }
+
+        AnimatedVisibility(
+            visible = showLaunchSplash && !callState.isInCall,
+            exit = fadeOut(animationSpec = tween(durationMillis = 260))
+        ) {
+            LaunchCoverOverlay(onDismiss = { showLaunchSplash = false })
+        }
+        }
+    }
+}
+
+@Composable
+internal fun LaunchCoverOverlay(onDismiss: () -> Unit) {
+    val bottomScrim = remember {
+        Brush.verticalGradient(
+            colors = listOf(Color.Transparent, Color(0xCC0C071B), Color(0xF20A0616))
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF100A22))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss
+            )
+            .testTag("launch_cover_overlay")
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.ayesha_launch_cover),
+            contentDescription = "আয়শা এআই সহকারী",
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(bottomScrim)
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 22.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "আয়শা",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "স্মার্ট বাংলা এআই সহকারী",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFE2D4FF)
+                )
+            }
         }
     }
 }

@@ -13,11 +13,25 @@ import org.json.JSONObject
  */
 class LatestShortsDraftStore(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val _latestDraft = MutableStateFlow(loadFromPrefs())
+    private val prefs by lazy {
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    private val _latestDraft = MutableStateFlow<ShortsAnalysisResult?>(null)
     val latestDraft: StateFlow<ShortsAnalysisResult?> = _latestDraft.asStateFlow()
 
+    @Volatile
+    private var preloaded = false
+
+    fun preload() {
+        if (preloaded) return
+        preloaded = true
+        if (_latestDraft.value == null) {
+            _latestDraft.value = loadFromPrefs()
+        }
+    }
+
     fun save(result: ShortsAnalysisResult) {
+        preloaded = true
         _latestDraft.value = result
         persist(result)
     }

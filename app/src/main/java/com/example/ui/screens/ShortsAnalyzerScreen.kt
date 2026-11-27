@@ -23,17 +23,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.db.CreatorAuditEntity
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
+import com.example.ui.components.AyeshaIcons
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatDurationBn
 import com.example.ui.theme.AmberWarning
@@ -236,7 +230,7 @@ fun ShortsAnalyzerScreen(
                 AyeshaCard(highlightBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.VideoLibrary,
+                            imageVector = AyeshaIcons.VideoLibrary,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -261,7 +255,7 @@ fun ShortsAnalyzerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Movie,
+                                    imageVector = AyeshaIcons.Movie,
                                     contentDescription = null,
                                     tint = TealSuccess
                                 )
@@ -301,7 +295,7 @@ fun ShortsAnalyzerScreen(
                             .height(48.dp)
                             .testTag("shorts_pick_video_button")
                     ) {
-                        Icon(Icons.Default.VideoLibrary, contentDescription = null)
+                        Icon(AyeshaIcons.VideoLibrary, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (uiState.selectedVideoUri == null) "গ্যালারি থেকে ভিডিও বাছাই করুন"
@@ -370,7 +364,7 @@ fun ShortsAnalyzerScreen(
                             Spacer(Modifier.width(10.dp))
                             Text(uiState.progressMessageBn.ifBlank { "বিশ্লেষণ চলছে..." })
                         } else {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                            Icon(AyeshaIcons.AutoAwesome, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("ভিডিও বিশ্লেষণ ও ৩ প্যাক তৈরি করুন")
                         }
@@ -443,7 +437,7 @@ fun ShortsAnalyzerScreen(
                                     if (result.visualSummaryBn.isNotBlank()) {
                                         Row(verticalAlignment = Alignment.Top) {
                                             Icon(
-                                                imageVector = Icons.Default.Visibility,
+                                                imageVector = AyeshaIcons.Visibility,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
@@ -458,7 +452,7 @@ fun ShortsAnalyzerScreen(
                                     if (result.audioSummaryBn.isNotBlank()) {
                                         Row(verticalAlignment = Alignment.Top) {
                                             Icon(
-                                                imageVector = Icons.Default.GraphicEq,
+                                                imageVector = AyeshaIcons.GraphicEq,
                                                 contentDescription = null,
                                                 tint = TealSuccess,
                                                 modifier = Modifier.size(18.dp)
@@ -575,7 +569,7 @@ fun ShortsAnalyzerScreen(
                                 .height(48.dp)
                                 .testTag("shorts_copy_title_button")
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null)
+                            Icon(AyeshaIcons.ContentCopy, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("টাইটেল কপি করুন")
                         }
@@ -610,7 +604,7 @@ fun ShortsAnalyzerScreen(
                                     .height(48.dp)
                                     .testTag("shorts_copy_desc_button")
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(AyeshaIcons.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("ডেসক্রিপশন")
                             }
@@ -625,7 +619,7 @@ fun ShortsAnalyzerScreen(
                                     .height(48.dp)
                                     .testTag("shorts_copy_all_button")
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(AyeshaIcons.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("সব কপি")
                             }
@@ -678,7 +672,7 @@ fun ShortsAnalyzerScreen(
                                 .height(52.dp)
                                 .testTag("shorts_send_to_platform_button")
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("ভিডিওসহ ${activePlatform.shortTabBn}-এ পাঠান")
                         }
@@ -704,7 +698,7 @@ fun ShortsAnalyzerScreen(
                                     .height(48.dp)
                                     .testTag("shorts_open_yt_studio_button")
                             ) {
-                                Icon(Icons.Default.PlayCircle, contentDescription = null)
+                                Icon(AyeshaIcons.PlayCircle, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
                                 Text("ডেসক্রিপশন কপি ও YouTube Studio খুলুন")
                             }
