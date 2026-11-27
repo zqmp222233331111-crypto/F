@@ -15,7 +15,7 @@ object GeminiModelResolver {
     private val cachedWorkingModel = AtomicReference<String?>("gemini-3.8-flash")
     private val fallbackOrder = listOf(
         "gemini-3.8-flash",
-        "gemini-3.6-flash",
+        "gemini-3.7-flash",
         "gemini-3.5-flash-lite",
         "gemini-flash-latest",
         "gemini-2.5-flash"
@@ -31,6 +31,37 @@ object GeminiModelResolver {
         return buildList {
             if (!current.isNullOrBlank()) add(current)
             fallbackOrder.forEach { if (it !in this) add(it) }
+        }
+    }
+
+    /**
+     * Prioritizes active, lowest-latency Flash models suited for multimodal video analysis.
+     */
+    fun fastVideoCandidateModels(): List<String> {
+        val current = cachedWorkingModel.get()
+        val fastOrder = listOf(
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.7-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-flash"
+        )
+        return buildList {
+            if (!current.isNullOrBlank()) add(current)
+            fastOrder.forEach { if (it !in this) add(it) }
+        }
+    }
+
+    /**
+     * Returns the lowest safe thinkingLevel for fast inference on Gemini 3.x models,
+     * or null for legacy models that do not accept thinkingLevel.
+     */
+    fun fastThinkingLevelFor(modelId: String): String? {
+        val lower = modelId.lowercase()
+        return when {
+            lower.contains("3.5-flash-lite") -> "minimal"
+            lower.contains("gemini-3") -> "low"
+            else -> null
         }
     }
 

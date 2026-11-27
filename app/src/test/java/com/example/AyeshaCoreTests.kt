@@ -155,7 +155,7 @@ class AyeshaCoreTests {
     }
 
     @Test
-    fun `shorts analyzer builds 3-platform multimodal request and parses all 3 platform packs`() {
+    fun `shorts analyzer builds fast 3-platform multimodal request and parses all 3 platform packs`() {
         val reqJson = ShortsVideoAnalyzer.buildGenerateContentRequestJson(
             fileUri = "https://generativelanguage.googleapis.com/v1beta/files/abc123",
             mimeType = "video/mp4",
@@ -167,6 +167,26 @@ class AyeshaCoreTests {
         assertTrue(reqJson.contains("facebook"))
         assertTrue(reqJson.contains("tiktok"))
         assertTrue(reqJson.contains("diagnostics"))
+        assertTrue(reqJson.contains("MEDIA_RESOLUTION_LOW"))
+        assertTrue(reqJson.contains("\"thinkingLevel\":\"low\""))
+
+        val fallbackJson = ShortsVideoAnalyzer.buildGenerateContentRequestJson(
+            fileUri = "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+            mimeType = "video/mp4",
+            language = ShortsOutputLanguage.BANGLA,
+            creatorNote = "",
+            thinkingLevel = null,
+            includeFastMediaResolution = false
+        )
+        assertFalse(fallbackJson.contains("MEDIA_RESOLUTION_LOW"))
+        assertFalse(fallbackJson.contains("thinkingLevel"))
+
+        assertTrue(ShortsVideoAnalyzer.isUnsupportedFastConfigError("Unknown name \"thinkingLevel\""))
+        assertTrue(ShortsVideoAnalyzer.isUnsupportedFastConfigError("Invalid mediaResolution field"))
+        assertEquals(0, ShortsVideoAnalyzer.UPLOAD_CHUNK_BYTES % (256 * 1024))
+        assertTrue(GeminiModelResolver.fastVideoCandidateModels().contains("gemini-3.5-flash-lite"))
+        assertEquals("minimal", GeminiModelResolver.fastThinkingLevelFor("gemini-3.5-flash-lite"))
+        assertEquals("low", GeminiModelResolver.fastThinkingLevelFor("gemini-3.8-flash"))
 
         val fakeResponse = """
             {

@@ -25,7 +25,7 @@ sealed class TrendRadarOutcome {
 class TrendRadarService(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 ) {
 
