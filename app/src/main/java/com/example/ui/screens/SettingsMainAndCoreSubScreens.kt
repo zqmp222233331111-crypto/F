@@ -383,7 +383,7 @@ fun SettingsVoiceSubScreen(
                 .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SubScreenTopBar(title = "কণ্ঠ নির্বাচন", onBack = onBack)
+            SubScreenTopBar(title = "কণ্ঠ নির্বাচন (${VoiceCatalog.femaleVoices.size}টি)", onBack = onBack)
             Column(
                 modifier = Modifier
                     .widthIn(max = 580.dp)
@@ -396,25 +396,12 @@ fun SettingsVoiceSubScreen(
                     }
                 }
 
-                Text("নারী কণ্ঠসমূহ", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                VoiceCatalog.femaleVoices.forEach { voice ->
-                    VoiceRowCard(
-                        voice = voice,
-                        selected = selectedVoice.equals(voice.name, ignoreCase = true),
-                        isPlaying = playingVoiceName == voice.name,
-                        onSelect = { onSelectVoice(voice.name) },
-                        onPlay = { onPlaySample(voice) }
-                    )
-                }
-
-                Spacer(Modifier.height(6.dp))
-                Text("পুরুষ কণ্ঠসমূহ", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
                 Text(
-                    text = "পুরুষ কণ্ঠ বেছে নিলে আয়শা স্বয়ংক্রিয়ভাবে পুরুষ চরিত্রের উপযোগী বাংলা ব্যাকরণে কথা বলবে।",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "নারী কণ্ঠসমূহ (${VoiceCatalog.femaleVoices.size}টি)",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                VoiceCatalog.maleVoices.forEach { voice ->
+                VoiceCatalog.femaleVoices.forEach { voice ->
                     VoiceRowCard(
                         voice = voice,
                         selected = selectedVoice.equals(voice.name, ignoreCase = true),

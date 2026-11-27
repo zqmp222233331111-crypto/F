@@ -83,7 +83,7 @@ class AyeshaCoreTests {
             mode = AyeshaMode.ISLAMIC,
             customCharacter = null,
             memories = listOf(MemoryEntity(characterId = "mode_islamic", factKey = "name", factValue = "রাফি")),
-            effectiveVoice = VoiceCatalog.findByName("Puck")
+            effectiveVoice = VoiceCatalog.findByName("Sulafat")
         )
         assertTrue(instruction.contains("999"))
         assertTrue(instruction.contains("আসসালামু আলাইকুম"))
@@ -306,5 +306,15 @@ class AyeshaCoreTests {
         assertEquals("মশার সাথে সিংহের মজার লড়াই", parsed.ideas.first().topicTitleBn)
         assertTrue(parsed.ideas.first().viralTags.contains("#shorts"))
         assertEquals(listOf("YouTube Trends"), parsed.sources)
+    }
+
+    @Test
+    fun `voice catalog includes 14 unique female gemini voices and falls back safely`() {
+        assertEquals(14, VoiceCatalog.femaleVoices.size)
+        assertEquals(14, VoiceCatalog.allVoices.size)
+        assertEquals(14, VoiceCatalog.allVoices.map { it.name }.distinct().size)
+        assertEquals("Zephyr", VoiceCatalog.findByName("zephyr").name)
+        assertEquals("Kore", VoiceCatalog.findByName("Kore").name)
+        assertEquals("Sulafat", VoiceCatalog.findByName("Puck").name)
     }
 }
