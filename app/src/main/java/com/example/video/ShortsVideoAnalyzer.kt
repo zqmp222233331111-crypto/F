@@ -15,7 +15,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -59,8 +61,8 @@ class ShortsVideoAnalyzer(
         httpClient.newBuilder()
             .connectTimeout(25, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(240, TimeUnit.SECONDS)
-            .callTimeout(260, TimeUnit.SECONDS)
+            .readTimeout(300, TimeUnit.SECONDS)
+            .callTimeout(330, TimeUnit.SECONDS)
             .build()
     }
 
@@ -159,22 +161,37 @@ class ShortsVideoAnalyzer(
         }
         if (info.sizeBytes > MAX_VIDEO_BYTES) {
             return@withContext ShortsAnalyzeOutcome.Failure(
-                "ভিডিওটির আকার ৫০০ MB-এর বেশি। অনুগ্রহ করে ছোট কোনো শর্টস ভিডিও বাছাই করুন।"
+                "ভিডিওটির আকার ২ GB-এর বেশি। অনুগ্রহ করে ছোট কোনো ভিডিও বাছাই করুন।"
             )
         }
 
         var uploadedFileName: String? = null
+        var compressedFile: java.io.File? = null
         var currentStage = AnalyzeStage.UPLOAD
         try {
-            onProgress("ভিডিও আপলোড শুরু হচ্ছে...")
-            val uploadUrl = startResumableUpload(trimmedKey, info)
-
-            val uploaded = uploadVideoInChunks(
+            compressedFile = VideoCompressor.compressIfBeneficial(
                 context = context,
-                videoUri = videoUri,
-                uploadUrl = uploadUrl,
-                totalSizeBytes = info.sizeBytes,
-                mimeType = info.mimeType,
+                sourceUri = videoUri,
+                originalSizeBytes = info.sizeBytes,
+                durationMs = info.durationMs,
+                onProgress = onProgress
+            )
+            val effectiveUri = compressedFile?.let { Uri.fromFile(it) } ?: videoUri
+            val effectiveInfo = if (compressedFile != null) {
+                info.copy(mimeType = "video/mp4", sizeBytes = compressedFile.length())
+            } else {
+                info
+            }
+
+            onProgress("ভিডিও আপলোড শুরু হচ্ছে...")
+            val session = startResumableUpload(trimmedKey, effectiveInfo)
+
+            val uploaded = uploadVideoSmart(
+                context = context,
+                apiKey = trimmedKey,
+                info = effectiveInfo,
+                videoUri = effectiveUri,
+                initialSession = session,
                 onProgress = onProgress
             )
             uploadedFileName = uploaded.name
@@ -188,7 +205,7 @@ class ShortsVideoAnalyzer(
             val responsePair = executeGenerateWithFallback(
                 apiKey = trimmedKey,
                 fileUri = activeUri,
-                mimeType = info.mimeType,
+                mimeType = effectiveInfo.mimeType,
                 language = language,
                 creatorNote = creatorNote
             )
@@ -230,15 +247,16 @@ class ShortsVideoAnalyzer(
             )
         } finally {
             uploadedFileName?.let { deleteUploadedFileQuietly(trimmedKey, it) }
+            compressedFile?.let { runCatching { it.delete() } }
         }
     }
 
-    private data class GenerateResponseHolder(
+    internal data class GenerateResponseHolder(
         val rawBody: String? = null,
         val errorMessageBn: String? = null
     )
 
-    private fun executeGenerateWithFallback(
+    internal fun executeGenerateWithFallback(
         apiKey: String,
         fileUri: String,
         mimeType: String,
@@ -249,15 +267,18 @@ class ShortsVideoAnalyzer(
         var lastErrorBn: String? = null
         var lastTimedOut = false
 
-        fun callModel(modelId: String, fastConfig: Boolean): Pair<Int, String> {
-            val thinkingLevel = if (fastConfig) GeminiModelResolver.fastThinkingLevelFor(modelId) else null
+        fun callModel(
+            modelId: String,
+            thinkingLevel: String?,
+            includeFastMediaResolution: Boolean
+        ): Pair<Int, String> {
             val bodyJson = buildGenerateContentRequestJson(
                 fileUri = fileUri,
                 mimeType = mimeType,
                 language = language,
                 creatorNote = creatorNote,
                 thinkingLevel = thinkingLevel,
-                includeFastMediaResolution = fastConfig
+                includeFastMediaResolution = includeFastMediaResolution
             )
             val req = Request.Builder()
                 .url(GeminiModelResolver.endpointFor(modelId))
@@ -269,20 +290,41 @@ class ShortsVideoAnalyzer(
             }
         }
 
-        fun tryModelWithOptionalConfigStrip(modelId: String): GenerateResponseHolder? {
-            var (code, raw) = callModel(modelId, fastConfig = true)
-            if (code == 400 && isUnsupportedFastConfigError(raw)) {
-                val retried = callModel(modelId, fastConfig = false)
-                code = retried.first
-                raw = retried.second
+        fun tryModelWithProgressiveFallback(modelId: String): GenerateResponseHolder? {
+            val fastThinking = GeminiModelResolver.fastThinkingLevelFor(modelId)
+            var (code, raw) = callModel(
+                modelId = modelId,
+                thinkingLevel = fastThinking,
+                includeFastMediaResolution = true
+            )
+            // Tier 2 on 400 (non-key error): drop thinkingLevel while keeping fast MEDIA_RESOLUTION_LOW
+            if (code == 400 && !isApiKeyError(raw) && fastThinking != null) {
+                val retriedNoThinking = callModel(
+                    modelId = modelId,
+                    thinkingLevel = null,
+                    includeFastMediaResolution = true
+                )
+                code = retriedNoThinking.first
+                raw = retriedNoThinking.second
             }
+            // Tier 3 on 400 (non-key error): drop mediaResolution too (pure standard baseline request)
+            if (code == 400 && !isApiKeyError(raw)) {
+                val retriedBaseline = callModel(
+                    modelId = modelId,
+                    thinkingLevel = null,
+                    includeFastMediaResolution = false
+                )
+                code = retriedBaseline.first
+                raw = retriedBaseline.second
+            }
+
             if (code in 200..299) {
                 GeminiModelResolver.markWorking(modelId)
                 return GenerateResponseHolder(rawBody = raw)
             }
             lastErrorBn = mapHttpErrorToBn(code, raw)
-            // Keep trying next model on 404 or transient 429/5xx overload; abort immediately on auth/bad request.
-            return if (code == 404 || code == 429 || code in 500..599) {
+            // Try next model on 404, 429, 5xx, OR model-specific 400 rejections (except invalid API key)
+            return if (code == 404 || code == 429 || code in 500..599 || (code == 400 && !isApiKeyError(raw))) {
                 null
             } else {
                 GenerateResponseHolder(errorMessageBn = lastErrorBn)
@@ -292,19 +334,18 @@ class ShortsVideoAnalyzer(
         for (modelId in GeminiModelResolver.fastVideoCandidateModels()) {
             tried.add(modelId)
             try {
-                val result = tryModelWithOptionalConfigStrip(modelId)
+                val result = tryModelWithProgressiveFallback(modelId)
                 if (result != null) return result
             } catch (_: SocketTimeoutException) {
                 lastTimedOut = true
                 lastErrorBn = "AI বিশ্লেষণের উত্তর আসতে বেশি সময় লেগেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
-                // Fail over to the next faster model (e.g. gemini-3.5-flash-lite)
             }
         }
 
         val discovered = GeminiModelResolver.discoverActiveFlashModel(analyzeClient, apiKey)
         if (!discovered.isNullOrBlank() && discovered !in tried) {
             try {
-                val result = tryModelWithOptionalConfigStrip(discovered)
+                val result = tryModelWithProgressiveFallback(discovered)
                 if (result != null) return result
             } catch (_: SocketTimeoutException) {
                 lastTimedOut = true
@@ -321,7 +362,12 @@ class ShortsVideoAnalyzer(
         )
     }
 
-    private fun startResumableUpload(apiKey: String, info: PickedVideoInfo): String {
+    private data class ResumableUploadSession(
+        val uploadUrl: String,
+        val chunkGranularityBytes: Long
+    )
+
+    private fun startResumableUpload(apiKey: String, info: PickedVideoInfo): ResumableUploadSession {
         val metadataJson = mapAdapter.toJson(
             mapOf("file" to mapOf("display_name" to info.displayName.take(120)))
         )
@@ -339,7 +385,7 @@ class ShortsVideoAnalyzer(
         uploadClient.newCall(request).execute().use { resp ->
             val raw = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw))
+                throw AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw), resp.code)
             }
             val uploadUrl = resp.headers.names()
                 .firstOrNull { it.equals("X-Goog-Upload-URL", ignoreCase = true) }
@@ -347,7 +393,16 @@ class ShortsVideoAnalyzer(
             if (uploadUrl.isNullOrBlank()) {
                 throw AnalyzerHttpException("আপলোড সেশন শুরু করা যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।")
             }
-            return uploadUrl
+            val granularity = resp.headers.names()
+                .firstOrNull { it.equals("X-Goog-Upload-Chunk-Granularity", ignoreCase = true) }
+                ?.let { resp.header(it) }
+                ?.toLongOrNull()
+                ?.coerceAtLeast(0L)
+                ?: 0L
+            return ResumableUploadSession(
+                uploadUrl = uploadUrl,
+                chunkGranularityBytes = granularity
+            )
         }
     }
 
@@ -357,19 +412,57 @@ class ShortsVideoAnalyzer(
         val state: String
     )
 
+    private suspend fun uploadVideoSmart(
+        context: Context,
+        apiKey: String,
+        info: PickedVideoInfo,
+        videoUri: Uri,
+        initialSession: ResumableUploadSession,
+        onProgress: (String) -> Unit
+    ): UploadedFileMeta {
+        val alignedChunkBytes = computeAlignedChunkSize(initialSession.chunkGranularityBytes)
+        return try {
+            uploadVideoInChunks(
+                context = context,
+                videoUri = videoUri,
+                uploadUrl = initialSession.uploadUrl,
+                totalSizeBytes = info.sizeBytes,
+                chunkSizeBytes = alignedChunkBytes,
+                onProgress = onProgress
+            )
+        } catch (e: AnalyzerHttpException) {
+            if (e.httpCode == 400 && !isApiKeyError(e.messageBn)) {
+                // Fallback safely to single-stream upload on a fresh resumable session
+                onProgress("ভিডিও পাঠানো হচ্ছে...")
+                val freshSession = startResumableUpload(apiKey, info)
+                uploadVideoSingleStream(
+                    context = context,
+                    videoUri = videoUri,
+                    uploadUrl = freshSession.uploadUrl,
+                    totalSizeBytes = info.sizeBytes,
+                    mimeType = info.mimeType,
+                    onProgress = onProgress
+                )
+            } else {
+                throw e
+            }
+        }
+    }
+
     private suspend fun uploadVideoInChunks(
         context: Context,
         videoUri: Uri,
         uploadUrl: String,
         totalSizeBytes: Long,
-        mimeType: String,
+        chunkSizeBytes: Int,
         onProgress: (String) -> Unit
     ): UploadedFileMeta {
         val rawStream = context.contentResolver.openInputStream(videoUri)
             ?: throw IOException("ভিডিও ফাইলটি খোলা যায়নি।")
 
-        val buffer = ByteArray(UPLOAD_CHUNK_BYTES)
+        val buffer = ByteArray(chunkSizeBytes)
         var offset = 0L
+        val totalMb = totalSizeBytes / (1024f * 1024f)
 
         BufferedInputStream(rawStream, 64 * 1024).use { stream ->
             while (true) {
@@ -388,13 +481,13 @@ class ShortsVideoAnalyzer(
                     chunkBuffer = buffer,
                     chunkLength = bytesRead,
                     startOffset = offset,
-                    isFinalChunk = isFinalChunk,
-                    mimeType = mimeType
+                    isFinalChunk = isFinalChunk
                 )
 
                 offset += bytesRead
                 val pct = ((offset * 100.0) / totalSizeBytes.coerceAtLeast(offset)).toInt().coerceIn(1, 100)
-                onProgress("ভিডিও আপলোড হচ্ছে... $pct%")
+                val sentMb = offset / (1024f * 1024f)
+                onProgress("আপলোড হচ্ছে $pct% (%.1f/%.1f MB)".format(sentMb, totalMb))
 
                 if (isFinalChunk) {
                     return parseUploadedFileMeta(responseBody)
@@ -405,13 +498,69 @@ class ShortsVideoAnalyzer(
         throw AnalyzerHttpException("ভিডিও আপলোড সম্পূর্ণ হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।")
     }
 
+    private fun uploadVideoSingleStream(
+        context: Context,
+        videoUri: Uri,
+        uploadUrl: String,
+        totalSizeBytes: Long,
+        mimeType: String,
+        onProgress: (String) -> Unit
+    ): UploadedFileMeta {
+        val totalMb = totalSizeBytes / (1024f * 1024f)
+        val streamingBody = object : RequestBody() {
+            override fun contentType() = mimeType.toMediaType()
+            override fun contentLength() = totalSizeBytes
+            override fun writeTo(sink: BufferedSink) {
+                val input = context.contentResolver.openInputStream(videoUri)
+                    ?: throw IOException("ভিডিও ফাইলটি খোলা যায়নি।")
+                input.use { stream ->
+                    val buffer = ByteArray(128 * 1024)
+                    var sent = 0L
+                    var lastReportedPct = -1
+                    while (true) {
+                        val read = stream.read(buffer)
+                        if (read == -1) break
+                        sink.write(buffer, 0, read)
+                        sent += read
+                        val pct = ((sent * 100.0) / totalSizeBytes.coerceAtLeast(1L)).toInt().coerceIn(1, 100)
+                        if (pct - lastReportedPct >= 10 || pct == 100) {
+                            lastReportedPct = pct
+                            val sentMb = sent / (1024f * 1024f)
+                            onProgress("আপলোড হচ্ছে $pct% (%.1f/%.1f MB)".format(sentMb, totalMb))
+                        }
+                    }
+                }
+            }
+        }
+
+        val streamClient = httpClient.newBuilder()
+            .connectTimeout(25, TimeUnit.SECONDS)
+            .writeTimeout(240, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .build()
+
+        val request = Request.Builder()
+            .url(uploadUrl)
+            .post(streamingBody)
+            .addHeader("X-Goog-Upload-Offset", "0")
+            .addHeader("X-Goog-Upload-Command", "upload, finalize")
+            .build()
+
+        streamClient.newCall(request).execute().use { resp ->
+            val raw = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw), resp.code)
+            }
+            return parseUploadedFileMeta(raw)
+        }
+    }
+
     private suspend fun sendChunkWithRetry(
         uploadUrl: String,
         chunkBuffer: ByteArray,
         chunkLength: Int,
         startOffset: Long,
-        isFinalChunk: Boolean,
-        mimeType: String
+        isFinalChunk: Boolean
     ): String {
         var currentOffset = startOffset
         var localOffset = 0
@@ -425,7 +574,7 @@ class ShortsVideoAnalyzer(
             }
             val command = if (isFinalChunk) "upload, finalize" else "upload"
             val body = chunkBuffer.toRequestBody(
-                contentType = mimeType.toMediaType(),
+                contentType = OCTET_STREAM_MEDIA_TYPE,
                 offset = localOffset,
                 byteCount = remaining.coerceAtLeast(0)
             )
@@ -443,14 +592,15 @@ class ShortsVideoAnalyzer(
                         return raw
                     }
                     if (resp.code == 408 || resp.code == 429 || resp.code in 500..599) {
-                        lastException = AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw))
+                        lastException = AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw), resp.code)
                     } else {
-                        throw AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw))
+                        throw AnalyzerHttpException(mapHttpErrorToBn(resp.code, raw), resp.code)
                     }
                 }
             } catch (e: UnknownHostException) {
                 throw e
             } catch (e: AnalyzerHttpException) {
+                if (e.httpCode == 400) throw e
                 lastException = e
                 if (attempt == 2) throw e
             } catch (e: IOException) {
@@ -537,7 +687,7 @@ class ShortsVideoAnalyzer(
         val cleanName = fileName.removePrefix("files/")
         val pollUrl = "$FILES_STATUS_BASE/$cleanName"
 
-        repeat(60) { attempt ->
+        repeat(120) { attempt ->
             delay(if (attempt == 0) 900L else if (attempt < 10) 1500L else 2000L)
             val req = Request.Builder()
                 .url(pollUrl)
@@ -578,7 +728,10 @@ class ShortsVideoAnalyzer(
         }
     }
 
-    private class AnalyzerHttpException(val messageBn: String) : Exception(messageBn)
+    private class AnalyzerHttpException(
+        val messageBn: String,
+        val httpCode: Int? = null
+    ) : Exception(messageBn)
 
     companion object {
         const val UPLOAD_ENDPOINT =
@@ -586,15 +739,30 @@ class ShortsVideoAnalyzer(
         const val FILES_STATUS_BASE =
             "https://generativelanguage.googleapis.com/v1beta/files"
 
-        // Must be a multiple of 256 KiB for Google Resumable Upload intermediate chunks.
-        const val UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+        // 8 MiB is a valid multiple of 256 KiB, 512 KiB, 1 MiB, 2 MiB, 4 MiB, and 8 MiB Scotty granularities.
+        const val UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
-        private const val MAX_VIDEO_BYTES = 500L * 1024L * 1024L
+        private const val MAX_VIDEO_BYTES = 2L * 1024L * 1024L * 1024L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val OCTET_STREAM_MEDIA_TYPE = "application/octet-stream".toMediaType()
         private val moshi: Moshi = Moshi.Builder().build()
         private val mapAdapter = moshi.adapter<Map<String, Any?>>(
             Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java)
         )
+
+        fun computeAlignedChunkSize(granularityBytes: Long): Int {
+            if (granularityBytes <= 0L) return UPLOAD_CHUNK_BYTES
+            if (granularityBytes >= 4L * 1024L * 1024L) {
+                return granularityBytes.coerceAtMost(16L * 1024L * 1024L).toInt()
+            }
+            val multiplier = (4L * 1024L * 1024L / granularityBytes).coerceAtLeast(1L)
+            return (multiplier * granularityBytes).coerceAtMost(16L * 1024L * 1024L).toInt()
+        }
+
+        fun isApiKeyError(rawBody: String): Boolean =
+            rawBody.contains("API_KEY_INVALID", ignoreCase = true) ||
+                rawBody.contains("API key not valid", ignoreCase = true) ||
+                rawBody.contains("API key expired", ignoreCase = true)
 
         fun isUnsupportedFastConfigError(rawBody: String): Boolean {
             val lower = rawBody.lowercase()
@@ -737,7 +905,7 @@ class ShortsVideoAnalyzer(
 
             val generationConfig = mutableMapOf<String, Any>(
                 "temperature" to 0.5,
-                "maxOutputTokens" to 2500,
+                "maxOutputTokens" to 4096,
                 "responseMimeType" to "application/json",
                 "responseSchema" to schema
             )
@@ -899,12 +1067,29 @@ class ShortsVideoAnalyzer(
             code == 429 || body.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
                 body.contains("quota", ignoreCase = true) ->
                 "ফ্রি এপিআই সীমা পূর্ণ হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।"
-            code == 401 || code == 403 || body.contains("API_KEY_INVALID", ignoreCase = true) ->
+            code == 401 || code == 403 || isApiKeyError(body) ->
                 "API কী-টি সঠিক নয় বা অনুমোদিত নয়। সেটিংস থেকে কী-টি যাচাই করুন।"
-            code == 400 ->
-                "ভিডিও ফরম্যাট বা অনুরোধটি গ্রহণ করা যায়নি। অনুগ্রহ করে MP4/নতুন ভিডিও দিয়ে চেষ্টা করুন।"
+            code == 400 -> {
+                val detail = extractApiErrorMessage(body)
+                if (detail.isNullOrBlank()) {
+                    "ভিডিও ফরম্যাট বা অনুরোধটি গ্রহণ করা যায়নি। অনুগ্রহ করে MP4/নতুন ভিডিও দিয়ে চেষ্টা করুন।"
+                } else {
+                    "অনুরোধটি গ্রহণ করা যায়নি: $detail"
+                }
+            }
             else ->
                 "সার্ভার ত্রুটি হয়েছে (কোড: $code)। কিছুক্ষণ পরে আবার চেষ্টা করুন।"
+        }
+
+        private fun extractApiErrorMessage(rawBody: String): String? {
+            if (rawBody.isBlank()) return null
+            return try {
+                val root = mapAdapter.fromJson(rawBody) ?: return null
+                val err = root["error"] as? Map<*, *>
+                (err?.get("message") as? String)?.trim()?.take(110)?.takeIf { it.isNotEmpty() }
+            } catch (_: Exception) {
+                null
+            }
         }
 
         private fun stripMarkdownFences(text: String): String {

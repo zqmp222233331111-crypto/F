@@ -184,9 +184,55 @@ class AyeshaCoreTests {
         assertTrue(ShortsVideoAnalyzer.isUnsupportedFastConfigError("Unknown name \"thinkingLevel\""))
         assertTrue(ShortsVideoAnalyzer.isUnsupportedFastConfigError("Invalid mediaResolution field"))
         assertEquals(0, ShortsVideoAnalyzer.UPLOAD_CHUNK_BYTES % (256 * 1024))
+        assertEquals(8 * 1024 * 1024, ShortsVideoAnalyzer.computeAlignedChunkSize(0L))
+        assertEquals(8 * 1024 * 1024, ShortsVideoAnalyzer.computeAlignedChunkSize(8L * 1024L * 1024L))
+        assertEquals(4 * 1024 * 1024, ShortsVideoAnalyzer.computeAlignedChunkSize(256L * 1024L))
         assertTrue(GeminiModelResolver.fastVideoCandidateModels().contains("gemini-3.5-flash-lite"))
         assertEquals("minimal", GeminiModelResolver.fastThinkingLevelFor("gemini-3.5-flash-lite"))
         assertEquals("low", GeminiModelResolver.fastThinkingLevelFor("gemini-3.8-flash"))
+        assertTrue(
+            ShortsVideoAnalyzer.mapHttpErrorToBn(400, "{\"error\":{\"message\":\"API key not valid.\"}}")
+                .contains("API কী")
+        )
+        assertTrue(
+            ShortsVideoAnalyzer.mapHttpErrorToBn(400, "{\"error\":{\"message\":\"Bad chunk offset\"}}")
+                .contains("Bad chunk offset")
+        )
+        assertFalse(com.example.video.VideoCompressor.shouldCompress(8L * 1024L * 1024L))
+        assertTrue(com.example.video.VideoCompressor.shouldCompress(35L * 1024L * 1024L))
+        assertEquals(854, com.example.video.VideoCompressor.targetPresentationHeight(1080, 1920, 0))
+        assertEquals(480, com.example.video.VideoCompressor.targetPresentationHeight(1920, 1080, 0))
+        assertEquals(800_000, com.example.video.VideoCompressor.targetBitrateForDuration(300_000L))
+
+        val mockRecoveryClient = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val bodyBuffer = okio.Buffer()
+                chain.request().body?.writeTo(bodyBuffer)
+                val reqStr = bodyBuffer.readUtf8()
+                val (code, respBody) = when {
+                    reqStr.contains("thinkingLevel") || reqStr.contains("MEDIA_RESOLUTION_LOW") ->
+                        400 to "{\"error\":{\"message\":\"Unsupported field\"}}"
+                    else ->
+                        200 to "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}"
+                }
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(code)
+                    .message("Test")
+                    .body(respBody.toResponseBody("application/json".toMediaType()))
+                    .build()
+            })
+            .build()
+        val recoveryOutcome = ShortsVideoAnalyzer(mockRecoveryClient).executeGenerateWithFallback(
+            apiKey = "test-key",
+            fileUri = "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+            mimeType = "video/mp4",
+            language = ShortsOutputLanguage.BANGLA,
+            creatorNote = ""
+        )
+        assertNotNull(recoveryOutcome.rawBody)
+        assertTrue(recoveryOutcome.rawBody!!.contains("candidates"))
 
         val fakeResponse = """
             {
