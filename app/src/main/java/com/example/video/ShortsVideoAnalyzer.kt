@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.example.data.GeminiModelResolver
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ sealed class ShortsAnalyzeOutcome {
 
 /**
  * Analyzes both visual frames and audio tracks of a gallery video using the
- * user's Gemini API Key via Gemini Resumable Files API + Gemini 2.5 Flash.
+ * user's Gemini API Key via Gemini Resumable Files API + Gemini Flash (resolved via GeminiModelResolver).
  * Streams video bytes directly from ContentResolver to prevent OutOfMemoryError.
  */
 class ShortsVideoAnalyzer(
@@ -144,33 +145,23 @@ class ShortsVideoAnalyzer(
                 creatorNote = creatorNote
             )
 
-            val genRequest = Request.Builder()
-                .url(GENERATE_CONTENT_ENDPOINT)
-                .post(generateBody.toRequestBody(JSON_MEDIA_TYPE))
-                .addHeader("x-goog-api-key", trimmedKey)
-                .build()
+            val responsePair = executeGenerateWithFallback(trimmedKey, generateBody)
+            if (responsePair.errorMessageBn != null) {
+                return@withContext ShortsAnalyzeOutcome.Failure(responsePair.errorMessageBn)
+            }
 
-            httpClient.newCall(genRequest).execute().use { resp ->
-                val rawBody = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    return@withContext ShortsAnalyzeOutcome.Failure(
-                        mapHttpErrorToBn(resp.code, rawBody)
-                    )
-                }
-
-                val parsed = parseGenerateContentResponse(
-                    rawResponse = rawBody,
-                    language = language,
-                    videoDisplayName = info.displayName,
-                    videoUriString = videoUri.toString()
+            val parsed = parseGenerateContentResponse(
+                rawResponse = responsePair.rawBody.orEmpty(),
+                language = language,
+                videoDisplayName = info.displayName,
+                videoUriString = videoUri.toString()
+            )
+            if (parsed != null) {
+                ShortsAnalyzeOutcome.Success(parsed)
+            } else {
+                ShortsAnalyzeOutcome.Failure(
+                    "ভিডিও বিশ্লেষণের উত্তরটি সঠিকভাবে পড়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।"
                 )
-                if (parsed != null) {
-                    ShortsAnalyzeOutcome.Success(parsed)
-                } else {
-                    ShortsAnalyzeOutcome.Failure(
-                        "ভিডিও বিশ্লেষণের উত্তরটি সঠিকভাবে পড়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।"
-                    )
-                }
             }
         } catch (_: UnknownHostException) {
             ShortsAnalyzeOutcome.Failure("ইন্টারনেট সংযোগ নেই। Wi-Fi বা মোবাইল ডেটা চালু করে আবার চেষ্টা করুন।")
@@ -189,6 +180,54 @@ class ShortsVideoAnalyzer(
         } finally {
             uploadedFileName?.let { deleteUploadedFileQuietly(trimmedKey, it) }
         }
+    }
+
+    private data class GenerateResponseHolder(
+        val rawBody: String? = null,
+        val errorMessageBn: String? = null
+    )
+
+    private fun executeGenerateWithFallback(apiKey: String, generateBody: String): GenerateResponseHolder {
+        val tried = linkedSetOf<String>()
+        var lastErrorBn: String? = null
+
+        fun callModel(modelId: String): Pair<Int, String> {
+            val req = Request.Builder()
+                .url(GeminiModelResolver.endpointFor(modelId))
+                .post(generateBody.toRequestBody(JSON_MEDIA_TYPE))
+                .addHeader("x-goog-api-key", apiKey)
+                .build()
+            return httpClient.newCall(req).execute().use { resp ->
+                resp.code to resp.body?.string().orEmpty()
+            }
+        }
+
+        for (modelId in GeminiModelResolver.candidateModels()) {
+            tried.add(modelId)
+            val (code, raw) = callModel(modelId)
+            if (code in 200..299) {
+                GeminiModelResolver.markWorking(modelId)
+                return GenerateResponseHolder(rawBody = raw)
+            }
+            lastErrorBn = mapHttpErrorToBn(code, raw)
+            if (code != 404) {
+                return GenerateResponseHolder(errorMessageBn = lastErrorBn)
+            }
+        }
+
+        val discovered = GeminiModelResolver.discoverActiveFlashModel(httpClient, apiKey)
+        if (!discovered.isNullOrBlank() && discovered !in tried) {
+            val (code, raw) = callModel(discovered)
+            if (code in 200..299) {
+                GeminiModelResolver.markWorking(discovered)
+                return GenerateResponseHolder(rawBody = raw)
+            }
+            lastErrorBn = mapHttpErrorToBn(code, raw)
+        }
+
+        return GenerateResponseHolder(
+            errorMessageBn = lastErrorBn ?: "সার্ভার ত্রুটি হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।"
+        )
     }
 
     private fun startResumableUpload(apiKey: String, info: PickedVideoInfo): String {
@@ -340,8 +379,6 @@ class ShortsVideoAnalyzer(
             "https://generativelanguage.googleapis.com/upload/v1beta/files"
         const val FILES_STATUS_BASE =
             "https://generativelanguage.googleapis.com/v1beta/files"
-        const val GENERATE_CONTENT_ENDPOINT =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
         private const val MAX_VIDEO_BYTES = 500L * 1024L * 1024L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -363,23 +400,39 @@ class ShortsVideoAnalyzer(
             }
 
             val promptText = """
-                Carefully analyze BOTH the video's visual frames (scenes, actions, expressions, on-screen text) AND the complete audio track (spoken dialogue, voiceover, tone, background sound/music).
-                You are generating a complete 3-platform short-video creator pack from this single video: YouTube Shorts, Facebook Reels, and TikTok.
-                Language preference: ${language.promptInstruction}
+                Carefully analyze BOTH the video's visual frames (scenes, actions, expressions, on-screen text, pacing, cuts) AND the complete audio track (spoken dialogue, voiceover, sound effects, tone, music).
+                IMPORTANT: Do NOT assume any fixed video category. Automatically detect what kind of video this actually is (for example: 2D/3D cartoon animation, dialogue-free slapstick comedy, vlog, tech tutorial, Islamic reminder, gaming, cooking, etc.) and tailor everything to that exact niche and audience.
+                You are acting like an elite vidIQ-grade Shorts/Reels/TikTok Video Doctor & Growth Coach generating:
+                (A) Universal Video Doctor Diagnostics in simple Bengali, AND
+                (B) A 3-platform creator pack (YouTube Shorts, Facebook Reels, TikTok).
+                Language preference for titles/descriptions: ${language.promptInstruction}
+
                 Requirements:
-                1. visualSummaryBn: 1-2 short sentences in simple Bengali describing what happens visually in the video.
-                2. audioSummaryBn: 1-2 short sentences in simple Bengali describing what is spoken or heard in the audio track (state clearly if there is only music or silence).
-                3. youtube: Object for YouTube Shorts:
-                   - titles: 3 catchy, high-CTR SEO YouTube Shorts titles (each under 85 characters)
-                   - recommendedTitle: Best single YouTube Shorts title (under 85 characters)
+                1. visualSummaryBn: 1-2 short sentences in simple Bengali describing what happens visually.
+                2. audioSummaryBn: 1-2 short sentences in simple Bengali describing what is spoken or heard (note clearly if dialogue-free cartoon SFX/music only).
+                3. diagnostics: Video Doctor audit object:
+                   - detectedCategoryBn: Short Bengali label of the video's detected niche (e.g. "২ডি কার্টুন কমেডি", "টেক রিভিউ", "ইসলামিক আলোচনা").
+                   - targetAudienceScopeBn: Who will watch this most & whether it works locally or globally (e.g. "সারা বিশ্বের কিডস ও ফ্যামিলি দর্শক" or "বাংলাদেশি তরুণ দর্শক").
+                   - viralScore: Honest integer 0..100 overall viral potential score.
+                   - hookScore: Integer 0..100 rating the first 3 seconds' scroll-stopping power.
+                   - pacingScore: Integer 0..100 rating visual rhythm, sound energy, and watch-through retention.
+                   - strengthsBn: 2-3 specific strengths of this video in Bengali.
+                   - weaknessesBn: 2-3 honest drop-off risks or weak spots (with timestamps like "০:০০-০:০২ সেকেন্ডে..." where helpful) in Bengali.
+                   - rescueFixesBn: 3-4 concrete, practical fixes to maximize views EVEN if the raw video is ordinary or weak (e.g. exact trim/cut suggestion, on-screen text overlay, sound/loop trick, curiosity title angle) in Bengali.
+                   - thumbnailTextBn: Ultra-punchy 2-4 word text to place on the video cover/thumbnail.
+                   - pinnedCommentBn: 1 engaging question or comment to pin right after uploading to boost comments/algorithm reach.
+                   - bestUploadWindowBn: Best Bangladeshi/target time window to publish this niche (e.g. "বিকেল ৫টা – রাত ৯টা").
+                4. youtube: Object for YouTube Shorts:
+                   - titles: 3 catchy, high-CTR SEO YouTube Shorts titles (under 85 chars each)
+                   - recommendedTitle: Best single YouTube Shorts title (under 85 chars)
                    - description: Engaging Shorts description with hook, CTA, and 6-10 hashtags ALWAYS including #shorts #youtubeshorts
                    - hashtags: List of those 6-10 hashtags (starting with #)
-                4. facebook: Object for Facebook Reels:
+                5. facebook: Object for Facebook Reels:
                    - titles: 3 conversational, share-worthy Facebook Reels hook titles
                    - recommendedTitle: Best Facebook Reels hook title
-                   - description: Warm storytelling Facebook Reels caption/description with engagement question and hashtags ALWAYS including #reels #facebookreels
+                   - description: Warm storytelling Facebook Reels caption with engagement question and hashtags ALWAYS including #reels #facebookreels
                    - hashtags: List of 6-10 Facebook Reels hashtags (starting with #)
-                5. tiktok: Object for TikTok:
+                6. tiktok: Object for TikTok:
                    - titles: 3 short, punchy, curiosity-driven TikTok hook lines
                    - recommendedTitle: Best TikTok hook title
                    - description: Trendy, snappy TikTok caption with hashtags ALWAYS including #fyp #tiktok
@@ -403,11 +456,42 @@ class ShortsVideoAnalyzer(
                 "required" to listOf("titles", "recommendedTitle", "description", "hashtags")
             )
 
+            val diagnosticsSchema = mapOf(
+                "type" to "OBJECT",
+                "properties" to mapOf(
+                    "detectedCategoryBn" to mapOf("type" to "STRING"),
+                    "targetAudienceScopeBn" to mapOf("type" to "STRING"),
+                    "viralScore" to mapOf("type" to "INTEGER"),
+                    "hookScore" to mapOf("type" to "INTEGER"),
+                    "pacingScore" to mapOf("type" to "INTEGER"),
+                    "strengthsBn" to mapOf("type" to "ARRAY", "items" to mapOf("type" to "STRING")),
+                    "weaknessesBn" to mapOf("type" to "ARRAY", "items" to mapOf("type" to "STRING")),
+                    "rescueFixesBn" to mapOf("type" to "ARRAY", "items" to mapOf("type" to "STRING")),
+                    "thumbnailTextBn" to mapOf("type" to "STRING"),
+                    "pinnedCommentBn" to mapOf("type" to "STRING"),
+                    "bestUploadWindowBn" to mapOf("type" to "STRING")
+                ),
+                "required" to listOf(
+                    "detectedCategoryBn",
+                    "targetAudienceScopeBn",
+                    "viralScore",
+                    "hookScore",
+                    "pacingScore",
+                    "strengthsBn",
+                    "weaknessesBn",
+                    "rescueFixesBn",
+                    "thumbnailTextBn",
+                    "pinnedCommentBn",
+                    "bestUploadWindowBn"
+                )
+            )
+
             val schema = mapOf(
                 "type" to "OBJECT",
                 "properties" to mapOf(
                     "visualSummaryBn" to mapOf("type" to "STRING"),
                     "audioSummaryBn" to mapOf("type" to "STRING"),
+                    "diagnostics" to diagnosticsSchema,
                     "youtube" to platformSchema(),
                     "facebook" to platformSchema(),
                     "tiktok" to platformSchema()
@@ -415,6 +499,7 @@ class ShortsVideoAnalyzer(
                 "required" to listOf(
                     "visualSummaryBn",
                     "audioSummaryBn",
+                    "diagnostics",
                     "youtube",
                     "facebook",
                     "tiktok"
@@ -529,6 +614,8 @@ class ShortsVideoAnalyzer(
 
                 if (packs.isEmpty()) return null
 
+                val diagnostics = parseDiagnostics(payload["diagnostics"] as? Map<*, *>)
+
                 ShortsAnalysisResult(
                     platformPacks = packs,
                     activePlatform = ShortsPlatform.YOUTUBE_SHORTS,
@@ -537,11 +624,47 @@ class ShortsVideoAnalyzer(
                     language = language,
                     videoDisplayName = videoDisplayName,
                     videoUriString = videoUriString,
-                    analyzedAtMillis = System.currentTimeMillis()
+                    analyzedAtMillis = System.currentTimeMillis(),
+                    diagnostics = diagnostics
                 )
             } catch (_: Exception) {
                 null
             }
+        }
+
+        private fun parseDiagnostics(block: Map<*, *>?): VideoDoctorDiagnostics? {
+            if (block == null) return null
+            fun stringList(key: String): List<String> = (block[key] as? List<*>)
+                .orEmpty()
+                .mapNotNull { (it as? String)?.trim()?.takeIf { s -> s.isNotEmpty() } }
+
+            fun boundedScore(key: String): Int {
+                val raw = (block[key] as? Number)?.toInt() ?: 0
+                return raw.coerceIn(0, 100)
+            }
+
+            val category = (block["detectedCategoryBn"] as? String)?.trim().orEmpty()
+            val viral = boundedScore("viralScore")
+            val hook = boundedScore("hookScore")
+            val pacing = boundedScore("pacingScore")
+            val strengths = stringList("strengthsBn")
+            val weaknesses = stringList("weaknessesBn")
+            val fixes = stringList("rescueFixesBn")
+            if (category.isBlank() && viral == 0 && fixes.isEmpty()) return null
+
+            return VideoDoctorDiagnostics(
+                detectedCategoryBn = category.ifBlank { "শর্ট ভিডিও" },
+                targetAudienceScopeBn = (block["targetAudienceScopeBn"] as? String)?.trim().orEmpty(),
+                viralScore = viral,
+                hookScore = hook,
+                pacingScore = pacing,
+                strengthsBn = strengths,
+                weaknessesBn = weaknesses,
+                rescueFixesBn = fixes,
+                thumbnailTextBn = (block["thumbnailTextBn"] as? String)?.trim().orEmpty(),
+                pinnedCommentBn = (block["pinnedCommentBn"] as? String)?.trim().orEmpty(),
+                bestUploadWindowBn = (block["bestUploadWindowBn"] as? String)?.trim().orEmpty()
+            )
         }
 
         fun mapHttpErrorToBn(code: Int, body: String): String = when {

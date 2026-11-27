@@ -86,3 +86,21 @@ interface BlockedAppDao {
     @Query("DELETE FROM blocked_apps")
     suspend fun deleteAll()
 }
+
+@Dao
+interface CreatorAuditDao {
+    @Query("SELECT * FROM creator_audits ORDER BY timestamp DESC")
+    fun observeAllAudits(): Flow<List<CreatorAuditEntity>>
+
+    @Query("SELECT * FROM creator_audits ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentAudits(limit: Int): List<CreatorAuditEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(audit: CreatorAuditEntity): Long
+
+    @Query("DELETE FROM creator_audits WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM creator_audits")
+    suspend fun deleteAll()
+}

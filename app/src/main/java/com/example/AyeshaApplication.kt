@@ -14,6 +14,7 @@ import com.example.live.LiveWebSearchService
 import com.example.live.VoiceSamplePlayer
 import com.example.video.LatestShortsDraftStore
 import com.example.video.ShortsVideoAnalyzer
+import com.example.video.TrendRadarService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +31,7 @@ class AppContainer(context: Context) {
     val phoneControlCoordinator = PhoneControlCoordinator(appContext, settingsRepository, repository)
     val latestShortsDraftStore = LatestShortsDraftStore(appContext)
     val shortsVideoAnalyzer = ShortsVideoAnalyzer()
+    val trendRadarService = TrendRadarService()
     val liveWebSearchService = LiveWebSearchService()
     val callAutoMemorySummarizer = CallAutoMemorySummarizer()
     val liveSessionManager = LiveSessionManager(
@@ -40,7 +42,8 @@ class AppContainer(context: Context) {
         phoneControlCoordinator = phoneControlCoordinator,
         latestShortsDraftStore = latestShortsDraftStore,
         liveWebSearchService = liveWebSearchService,
-        callAutoMemorySummarizer = callAutoMemorySummarizer
+        callAutoMemorySummarizer = callAutoMemorySummarizer,
+        trendRadarService = trendRadarService
     )
     val voiceSamplePlayer = VoiceSamplePlayer()
 

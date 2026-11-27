@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 /**
  * Persists the latest 3-platform analyzed video pack (YouTube Shorts, Facebook Reels, TikTok)
- * locally so both the Shorts tab and live voice calls can read or edit it anytime.
+ * and Video Doctor diagnostics locally so both the Shorts tab and live voice calls can read or edit it anytime.
  */
 class LatestShortsDraftStore(context: Context) {
 
@@ -80,6 +80,24 @@ class LatestShortsDraftStore(context: Context) {
             put("videoDisplayName", result.videoDisplayName)
             put("videoUriString", result.videoUriString)
             put("analyzedAtMillis", result.analyzedAtMillis)
+            result.diagnostics?.let { diag ->
+                put(
+                    "diagnostics",
+                    JSONObject().apply {
+                        put("detectedCategoryBn", diag.detectedCategoryBn)
+                        put("targetAudienceScopeBn", diag.targetAudienceScopeBn)
+                        put("viralScore", diag.viralScore)
+                        put("hookScore", diag.hookScore)
+                        put("pacingScore", diag.pacingScore)
+                        put("strengthsBn", JSONArray(diag.strengthsBn))
+                        put("weaknessesBn", JSONArray(diag.weaknessesBn))
+                        put("rescueFixesBn", JSONArray(diag.rescueFixesBn))
+                        put("thumbnailTextBn", diag.thumbnailTextBn)
+                        put("pinnedCommentBn", diag.pinnedCommentBn)
+                        put("bestUploadWindowBn", diag.bestUploadWindowBn)
+                    }
+                )
+            }
         }
         prefs.edit().putString(KEY_DRAFT_JSON, obj.toString()).apply()
     }
@@ -109,7 +127,6 @@ class LatestShortsDraftStore(context: Context) {
                     }
                 }
             } else {
-                // Backward compatibility with single-platform saved drafts
                 val selectedTitle = obj.optString("selectedTitle").orEmpty()
                 val description = obj.optString("description").orEmpty()
                 if (selectedTitle.isNotBlank() || description.isNotBlank()) {
@@ -125,6 +142,23 @@ class LatestShortsDraftStore(context: Context) {
 
             if (packs.isEmpty()) return null
 
+            val diagObj = obj.optJSONObject("diagnostics")
+            val diagnostics = if (diagObj != null) {
+                VideoDoctorDiagnostics(
+                    detectedCategoryBn = diagObj.optString("detectedCategoryBn").orEmpty(),
+                    targetAudienceScopeBn = diagObj.optString("targetAudienceScopeBn").orEmpty(),
+                    viralScore = diagObj.optInt("viralScore", 0),
+                    hookScore = diagObj.optInt("hookScore", 0),
+                    pacingScore = diagObj.optInt("pacingScore", 0),
+                    strengthsBn = jsonArrayToList(diagObj.optJSONArray("strengthsBn")),
+                    weaknessesBn = jsonArrayToList(diagObj.optJSONArray("weaknessesBn")),
+                    rescueFixesBn = jsonArrayToList(diagObj.optJSONArray("rescueFixesBn")),
+                    thumbnailTextBn = diagObj.optString("thumbnailTextBn").orEmpty(),
+                    pinnedCommentBn = diagObj.optString("pinnedCommentBn").orEmpty(),
+                    bestUploadWindowBn = diagObj.optString("bestUploadWindowBn").orEmpty()
+                )
+            } else null
+
             ShortsAnalysisResult(
                 platformPacks = packs,
                 activePlatform = ShortsPlatform.fromId(obj.optString("activePlatform")),
@@ -133,7 +167,8 @@ class LatestShortsDraftStore(context: Context) {
                 language = ShortsOutputLanguage.fromId(obj.optString("languageId")),
                 videoDisplayName = obj.optString("videoDisplayName").orEmpty(),
                 videoUriString = obj.optString("videoUriString").orEmpty(),
-                analyzedAtMillis = obj.optLong("analyzedAtMillis", 0L)
+                analyzedAtMillis = obj.optLong("analyzedAtMillis", 0L),
+                diagnostics = diagnostics
             )
         } catch (_: Exception) {
             null

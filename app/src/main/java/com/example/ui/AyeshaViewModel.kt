@@ -17,6 +17,7 @@ import com.example.data.UserSettings
 import com.example.data.VoiceMood
 import com.example.data.db.BlockedAppEntity
 import com.example.data.db.CallHistoryEntity
+import com.example.data.db.CreatorAuditEntity
 import com.example.data.db.CustomCharacterEntity
 import com.example.data.db.MemoryEntity
 import com.example.live.CallType
@@ -29,6 +30,11 @@ import com.example.video.ShortsAnalyzeOutcome
 import com.example.video.ShortsAnalyzerUiState
 import com.example.video.ShortsOutputLanguage
 import com.example.video.ShortsPlatform
+import com.example.video.ShortsSubTab
+import com.example.video.TrendPlatformFilter
+import com.example.video.TrendRadarOutcome
+import com.example.video.TrendRadarUiState
+import com.example.video.TrendRegion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -69,6 +75,7 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
     private val voiceSamplePlayer = container.voiceSamplePlayer
     private val shortsVideoAnalyzer = container.shortsVideoAnalyzer
     private val latestShortsDraftStore = container.latestShortsDraftStore
+    private val trendRadarService = container.trendRadarService
 
     val settings: StateFlow<UserSettings> = settingsRepo.settings
         .stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
@@ -90,6 +97,9 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
     val blockedApps: StateFlow<List<BlockedAppEntity>> = repo.blockedApps
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val creatorAudits: StateFlow<List<CreatorAuditEntity>> = repo.creatorAudits
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _apiKeyVerifyState = MutableStateFlow<ApiKeyVerifyUiState>(ApiKeyVerifyUiState.Idle)
     val apiKeyVerifyState: StateFlow<ApiKeyVerifyUiState> = _apiKeyVerifyState.asStateFlow()
 
@@ -106,6 +116,13 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         ShortsAnalyzerUiState(result = latestShortsDraftStore.latestDraft.value)
     )
     val shortsAnalyzerState: StateFlow<ShortsAnalyzerUiState> = _shortsAnalyzerState.asStateFlow()
+
+    private val _trendRadarState = MutableStateFlow(
+        TrendRadarUiState(
+            nicheQuery = latestShortsDraftStore.latestDraft.value?.diagnostics?.detectedCategoryBn.orEmpty()
+        )
+    )
+    val trendRadarState: StateFlow<TrendRadarUiState> = _trendRadarState.asStateFlow()
 
     fun hasStoredApiKey(): Boolean = keystore.hasApiKey()
 
@@ -379,8 +396,78 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
             repo.deleteAllAppData()
             latestShortsDraftStore.clear()
             _shortsAnalyzerState.value = ShortsAnalyzerUiState()
+            _trendRadarState.value = TrendRadarUiState()
             _apiKeyVerifyState.value = ApiKeyVerifyUiState.Idle
         }
+    }
+
+    fun selectShortsSubTab(tab: ShortsSubTab) {
+        _shortsAnalyzerState.update { it.copy(activeSubTab = tab) }
+    }
+
+    fun setTrendNicheQuery(query: String) {
+        _trendRadarState.update { it.copy(nicheQuery = query.take(120)) }
+    }
+
+    fun setTrendRegion(region: TrendRegion) {
+        _trendRadarState.update { it.copy(region = region) }
+    }
+
+    fun setTrendPlatformFilter(filter: TrendPlatformFilter) {
+        _trendRadarState.update { it.copy(platformFilter = filter) }
+    }
+
+    fun fetchLiveTrends(nicheOverride: String? = null) {
+        val current = _trendRadarState.value
+        if (current.isLoading) return
+
+        val query = (nicheOverride ?: current.nicheQuery).trim()
+            .ifBlank { _shortsAnalyzerState.value.result?.diagnostics?.detectedCategoryBn.orEmpty() }
+            .ifBlank { "ভাইরাল শর্টস ও রিলস" }
+
+        val apiKey = keystore.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            _trendRadarState.update {
+                it.copy(errorMessageBn = "প্রথমে যাচাইকৃত Gemini API কী যোগ করুন।")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _trendRadarState.update {
+                it.copy(nicheQuery = query, isLoading = true, errorMessageBn = null)
+            }
+            when (val outcome = trendRadarService.fetchTrends(apiKey, query, current.region, current.platformFilter)) {
+                is TrendRadarOutcome.Success -> {
+                    _trendRadarState.update {
+                        it.copy(isLoading = false, errorMessageBn = null, result = outcome.result)
+                    }
+                    repo.insertCreatorAudit(
+                        CreatorAuditEntity(
+                            source = "TREND_CHECK",
+                            platform = current.platformFilter.labelBn,
+                            videoOrTopic = query,
+                            categoryBn = query,
+                            problemSummaryBn = outcome.result.trendSummaryBn.take(160),
+                            actionTakenBn = outcome.result.ideas.firstOrNull()?.topicTitleBn.orEmpty()
+                        )
+                    )
+                }
+                is TrendRadarOutcome.Failure -> {
+                    _trendRadarState.update {
+                        it.copy(isLoading = false, errorMessageBn = outcome.messageBn)
+                    }
+                }
+            }
+        }
+    }
+
+    fun deleteCreatorAudit(id: Long) {
+        viewModelScope.launch { repo.deleteCreatorAudit(id) }
+    }
+
+    fun deleteAllCreatorAudits() {
+        viewModelScope.launch { repo.deleteAllCreatorAudits() }
     }
 
     fun onShortsVideoPicked(uri: Uri) {
@@ -443,6 +530,23 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
             when (outcome) {
                 is ShortsAnalyzeOutcome.Success -> {
                     latestShortsDraftStore.save(outcome.result)
+                    val diag = outcome.result.diagnostics
+                    if (diag != null) {
+                        repo.insertCreatorAudit(
+                            CreatorAuditEntity(
+                                source = "VIDEO_DOCTOR",
+                                platform = "৩ প্ল্যাটফর্ম",
+                                videoOrTopic = outcome.result.selectedTitle.ifBlank { outcome.result.videoDisplayName },
+                                categoryBn = diag.detectedCategoryBn,
+                                viralScore = diag.viralScore,
+                                problemSummaryBn = diag.weaknessesBn.firstOrNull().orEmpty(),
+                                actionTakenBn = diag.rescueFixesBn.firstOrNull().orEmpty()
+                            )
+                        )
+                        if (_trendRadarState.value.nicheQuery.isBlank() && diag.detectedCategoryBn.isNotBlank()) {
+                            _trendRadarState.update { it.copy(nicheQuery = diag.detectedCategoryBn) }
+                        }
+                    }
                     _shortsAnalyzerState.update {
                         it.copy(
                             isAnalyzing = false,

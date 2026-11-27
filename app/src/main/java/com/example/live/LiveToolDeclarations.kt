@@ -21,6 +21,9 @@ object LiveToolDeclarations {
     ): List<String> = buildList {
         add("web_search")
         add("get_latest_shorts_draft")
+        add("get_trending_creator_ideas")
+        add("save_creator_audit")
+        add("get_creator_audit_history")
         if (includeMemoryTools) {
             add("save_memory")
             add("delete_memory")
@@ -52,8 +55,50 @@ object LiveToolDeclarations {
         functionDeclarations.put(
             fn(
                 name = "get_latest_shorts_draft",
-                description = "Fetch the latest analyzed video pack (YouTube Shorts, Facebook Reels, and TikTok titles, descriptions, hashtags, and video/audio summary) so you can read it aloud or type it into YouTube, YouTube Studio, Facebook, or TikTok.",
+                description = "Fetch the latest analyzed video pack (YouTube Shorts, Facebook Reels, TikTok titles, descriptions, hashtags, viral score, weaknesses, and rescue fixes) so you can advise or type it into YouTube, YouTube Studio, Facebook, or TikTok.",
                 properties = emptyMap(),
+                required = emptyList()
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "get_trending_creator_ideas",
+                description = "Search live trending topics, hooks, tags, and best posting times across YouTube Shorts, Facebook Reels, and TikTok for any video niche (only call when user asks about content/trends or shares a creator app screen).",
+                properties = mapOf(
+                    "niche" to prop("STRING", "Video category/topic, e.g. '2D cartoon comedy', 'tech review', 'islamic', 'cooking'"),
+                    "platform" to prop("STRING", "Optional: YouTube Shorts, Facebook Reels, TikTok, or All")
+                ),
+                required = listOf("niche")
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "save_creator_audit",
+                description = "Save a local Creator Growth Log entry after checking YouTube Studio / TikTok / Facebook analytics or updating a video's title/description so future calls can compare performance.",
+                properties = mapOf(
+                    "platform" to prop("STRING", "e.g. YouTube Studio, YouTube Shorts, Facebook Reels, TikTok"),
+                    "video_title" to prop("STRING", "Title or topic of the audited video"),
+                    "category" to prop("STRING", "Detected content niche/category"),
+                    "viral_score" to prop("INTEGER", "Optional 0-100 score (-1 if Studio analytics)"),
+                    "views_count" to prop("INTEGER", "Observed views count (-1 if not shown)"),
+                    "ctr_percent" to prop("NUMBER", "Observed CTR percentage like 4.8 (-1 if not shown)"),
+                    "retention_percent" to prop("NUMBER", "Observed average % viewed / retention like 72.5 (-1 if not shown)"),
+                    "problem_summary" to prop("STRING", "Concise Bengali summary of what issue was spotted"),
+                    "action_taken" to prop("STRING", "Concise Bengali summary of fix suggested or applied")
+                ),
+                required = listOf("platform", "video_title", "problem_summary", "action_taken")
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "get_creator_audit_history",
+                description = "Retrieve previous Creator Growth Log audits (scores, past YouTube Studio views/CTR/retention, and past actions) to compare progress during follow-up.",
+                properties = mapOf(
+                    "limit" to prop("INTEGER", "Optional number of recent entries (default 8)")
+                ),
                 required = emptyList()
             )
         )

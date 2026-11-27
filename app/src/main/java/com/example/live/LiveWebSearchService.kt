@@ -1,5 +1,6 @@
 package com.example.live
 
+import com.example.data.GeminiModelResolver
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -12,7 +13,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Executes live Google Search grounded lookups via Gemini 2.5 Flash REST API
+ * Executes live Google Search grounded lookups via Gemini Flash REST API
  * when the live voice agent calls the `web_search` function tool.
  * Keeps `BidiGenerateContent` WebSocket connections free from built-in setup quota failures.
  */
@@ -37,7 +38,6 @@ class LiveWebSearchService(
             return@withContext groundedResult
         }
 
-        // Graceful fallback without failing the voice call
         mapOf(
             "success" to false,
             "error" to "লাইভ সার্চ থেকে এই মুহূর্তে তথ্য আনা যায়নি। অনুমান না করে ব্যবহারকারীকে সত্য কথা জানান।"
@@ -67,21 +67,41 @@ class LiveWebSearchService(
         if (withGoogleSearch) {
             bodyMap["tools"] = listOf(mapOf("googleSearch" to emptyMap<String, Any>()))
         }
+        val payload = mapAdapter.toJson(bodyMap)
 
-        val request = Request.Builder()
-            .url(GENERATE_ENDPOINT)
-            .post(mapAdapter.toJson(bodyMap).toRequestBody(JSON_MEDIA_TYPE))
-            .addHeader("x-goog-api-key", apiKey)
-            .build()
+        fun tryModel(modelId: String): Pair<Int, Map<String, Any?>?> {
+            val request = Request.Builder()
+                .url(GeminiModelResolver.endpointFor(modelId))
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .addHeader("x-goog-api-key", apiKey)
+                .build()
+            return httpClient.newCall(request).execute().use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (resp.isSuccessful) resp.code to parseSearchResponse(raw)
+                else resp.code to null
+            }
+        }
 
         return try {
-            httpClient.newCall(request).execute().use { resp ->
-                val raw = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    return null
+            val tried = linkedSetOf<String>()
+            for (modelId in GeminiModelResolver.candidateModels()) {
+                tried.add(modelId)
+                val (code, parsed) = tryModel(modelId)
+                if (code in 200..299 && parsed != null) {
+                    GeminiModelResolver.markWorking(modelId)
+                    return parsed
                 }
-                parseSearchResponse(raw)
+                if (code != 404) return null
             }
+            val discovered = GeminiModelResolver.discoverActiveFlashModel(httpClient, apiKey)
+            if (!discovered.isNullOrBlank() && discovered !in tried) {
+                val (code, parsed) = tryModel(discovered)
+                if (code in 200..299 && parsed != null) {
+                    GeminiModelResolver.markWorking(discovered)
+                    return parsed
+                }
+            }
+            null
         } catch (_: IOException) {
             null
         } catch (_: Exception) {
@@ -90,8 +110,6 @@ class LiveWebSearchService(
     }
 
     companion object {
-        const val GENERATE_ENDPOINT =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val moshi: Moshi = Moshi.Builder().build()
         private val mapAdapter = moshi.adapter<Map<String, Any?>>(

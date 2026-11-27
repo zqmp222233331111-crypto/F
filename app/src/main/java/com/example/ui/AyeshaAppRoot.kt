@@ -95,6 +95,8 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
     val relationshipNoticeMode by viewModel.showRelationshipNoticeMode.collectAsStateWithLifecycle()
     val showAccessibilityDisclosure by viewModel.showAccessibilityDisclosure.collectAsStateWithLifecycle()
     val shortsAnalyzerState by viewModel.shortsAnalyzerState.collectAsStateWithLifecycle()
+    val trendRadarState by viewModel.trendRadarState.collectAsStateWithLifecycle()
+    val creatorAudits by viewModel.creatorAudits.collectAsStateWithLifecycle()
 
     val shortsCallMicLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -375,8 +377,11 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
 
                                         MainTab.SHORTS -> ShortsAnalyzerScreen(
                                             uiState = shortsAnalyzerState,
+                                            trendState = trendRadarState,
+                                            creatorAudits = creatorAudits,
                                             isKeyVerified = isKeyVerified,
                                             isPhoneControlReady = settings.phoneControlMasterEnabled && permissions.isAccessibilityEnabled,
+                                            onSelectSubTab = { tab -> viewModel.selectShortsSubTab(tab) },
                                             onVideoPicked = { uri -> viewModel.onShortsVideoPicked(uri) },
                                             onSelectLanguage = { lang -> viewModel.setShortsLanguage(lang) },
                                             onCreatorNoteChange = { note -> viewModel.setShortsCreatorNote(note) },
@@ -385,6 +390,12 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                             onSelectTitleOption = { title -> viewModel.selectShortsTitle(title) },
                                             onTitleEdited = { title -> viewModel.updateShortsTitle(title) },
                                             onDescriptionEdited = { desc -> viewModel.updateShortsDescription(desc) },
+                                            onTrendNicheChange = { q -> viewModel.setTrendNicheQuery(q) },
+                                            onTrendRegionChange = { r -> viewModel.setTrendRegion(r) },
+                                            onTrendPlatformChange = { p -> viewModel.setTrendPlatformFilter(p) },
+                                            onFetchTrends = { niche -> viewModel.fetchLiveTrends(niche) },
+                                            onDeleteCreatorAudit = { id -> viewModel.deleteCreatorAudit(id) },
+                                            onDeleteAllCreatorAudits = { viewModel.deleteAllCreatorAudits() },
                                             onStartVoiceAssistCall = {
                                                 val micOk = ContextCompat.checkSelfPermission(
                                                     context,

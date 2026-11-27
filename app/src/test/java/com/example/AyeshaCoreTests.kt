@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.data.ApiKeyVerifier
+import com.example.data.GeminiModelResolver
 import com.example.data.KeyVerificationResult
 import com.example.data.SensitiveDataFilter
 import com.example.data.UserSettings
@@ -14,6 +15,9 @@ import com.example.persona.VoiceCatalog
 import com.example.video.ShortsOutputLanguage
 import com.example.video.ShortsPlatform
 import com.example.video.ShortsVideoAnalyzer
+import com.example.video.TrendPlatformFilter
+import com.example.video.TrendRadarService
+import com.example.video.TrendRegion
 import kotlinx.coroutines.test.runTest
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -97,17 +101,22 @@ class AyeshaCoreTests {
             effectiveVoice = VoiceCatalog.findByName("Sulafat")
         )
         assertTrue(friendInstruction.contains("LIVE GOOGLE SEARCH (ALL MODES)"))
+        assertTrue(friendInstruction.contains("CONTEXT-AWARE CREATOR & ANALYTICS COACH"))
+        assertTrue(friendInstruction.contains("NEVER bring up YouTube, TikTok, views, or analytics unprompted"))
     }
 
     @Test
-    fun `live tool declarations include 15 phone tools, 2 memory tools, web_search, and shorts draft tool`() {
+    fun `live tool declarations include 15 phone tools, 2 memory tools, creator coach tools, and web_search`() {
         val toolNames = LiveToolDeclarations.expectedFunctionToolNames(
             includeMemoryTools = true,
             includePhoneControlTools = true
         )
-        assertEquals(19, toolNames.size)
+        assertEquals(22, toolNames.size)
         assertTrue(toolNames.contains("web_search"))
         assertTrue(toolNames.contains("get_latest_shorts_draft"))
+        assertTrue(toolNames.contains("get_trending_creator_ideas"))
+        assertTrue(toolNames.contains("save_creator_audit"))
+        assertTrue(toolNames.contains("get_creator_audit_history"))
         assertTrue(toolNames.contains("save_memory"))
         assertTrue(toolNames.contains("delete_memory"))
         assertEquals(15, LiveToolDeclarations.phoneToolNames.size)
@@ -157,6 +166,7 @@ class AyeshaCoreTests {
         assertTrue(reqJson.contains("youtube"))
         assertTrue(reqJson.contains("facebook"))
         assertTrue(reqJson.contains("tiktok"))
+        assertTrue(reqJson.contains("diagnostics"))
 
         val fakeResponse = """
             {
@@ -165,7 +175,7 @@ class AyeshaCoreTests {
                   "content": {
                     "parts": [
                       {
-                        "text": "{\"visualSummaryBn\":\"পাহাড়ে সূর্যোদয়ের দৃশ্য।\",\"audioSummaryBn\":\"ভয়েসওভারে ভ্রমণের গল্প বলা হয়েছে।\",\"youtube\":{\"titles\":[\"সাজেকে সূর্যোদয় দেখে অবাক!\"],\"recommendedTitle\":\"সাজেকে সূর্যোদয় দেখে অবাক!\",\"description\":\"সকালে মেঘের রাজ্যে দারুণ মুহূর্ত।\",\"hashtags\":[\"#shorts\",\"#travel\"]},\"facebook\":{\"titles\":[\"মেঘের রাজ্যে এক সকাল\"],\"recommendedTitle\":\"মেঘের রাজ্যে এক সকাল\",\"description\":\"সাজেক ভ্যালির অভিজ্ঞতা কেমন লাগলো?\",\"hashtags\":[\"#reels\",\"#facebookreels\"]},\"tiktok\":{\"titles\":[\"সাজেকের সকাল দেখলে মন জুড়িয়ে যাবে\"],\"recommendedTitle\":\"সাজেকের সকাল দেখলে মন জুড়িয়ে যাবে\",\"description\":\"মেঘের দেশে সকাল\",\"hashtags\":[\"#fyp\",\"tiktok\"]}}"
+                        "text": "{\"visualSummaryBn\":\"পাহাড়ে সূর্যোদয়ের দৃশ্য।\",\"audioSummaryBn\":\"ভয়েসওভারে ভ্রমণের গল্প বলা হয়েছে।\",\"diagnostics\":{\"detectedCategoryBn\":\"ট্রাভেল ভ্লগ\",\"targetAudienceScopeBn\":\"বাংলাদেশ ও আন্তর্জাতিক\",\"viralScore\":82,\"hookScore\":78,\"pacingScore\":85,\"strengthsBn\":[\"সুন্দর দৃশ্য\"],\"weaknessesBn\":[\"শুরুর ১ সেকেন্ড একটু ধীর\"],\"rescueFixesBn\":[\"শুরুতে বড় টেক্সট দিন\"],\"thumbnailTextBn\":\"মেঘের রাজ্য!\",\"pinnedCommentBn\":\"আপনি কি সাজেক গেছেন?\",\"bestUploadWindowBn\":\"সন্ধ্যা ৭টা - রাত ৯টা\"},\"youtube\":{\"titles\":[\"সাজেকে সূর্যোদয় দেখে অবাক!\"],\"recommendedTitle\":\"সাজেকে সূর্যোদয় দেখে অবাক!\",\"description\":\"সকালে মেঘের রাজ্যে দারুণ মুহূর্ত।\",\"hashtags\":[\"#shorts\",\"#travel\"]},\"facebook\":{\"titles\":[\"মেঘের রাজ্যে এক সকাল\"],\"recommendedTitle\":\"মেঘের রাজ্যে এক সকাল\",\"description\":\"সাজেক ভ্যালির অভিজ্ঞতা কেমন লাগলো?\",\"hashtags\":[\"#reels\",\"#facebookreels\"]},\"tiktok\":{\"titles\":[\"সাজেকের সকাল দেখলে মন জুড়িয়ে যাবে\"],\"recommendedTitle\":\"সাজেকের সকাল দেখলে মন জুড়িয়ে যাবে\",\"description\":\"মেঘের দেশে সকাল\",\"hashtags\":[\"#fyp\",\"tiktok\"]}}"
                       }
                     ]
                   }
@@ -185,6 +195,11 @@ class AyeshaCoreTests {
         assertEquals("সাজেকে সূর্যোদয় দেখে অবাক!", parsed.selectedTitle)
         assertEquals("মেঘের রাজ্যে এক সকাল", parsed.platformPacks[ShortsPlatform.FACEBOOK_REELS]?.selectedTitle)
         assertTrue(parsed.platformPacks[ShortsPlatform.TIKTOK]?.hashtags?.contains("#tiktok") == true)
+        val diag = parsed.diagnostics
+        assertNotNull(diag)
+        assertEquals(82, diag!!.viralScore)
+        assertEquals("ট্রাভেল ভ্লগ", diag.detectedCategoryBn)
+        assertEquals("মেঘের রাজ্য!", diag.thumbnailTextBn)
     }
 
     @Test
@@ -225,5 +240,71 @@ class AyeshaCoreTests {
         assertEquals(2, facts.size)
         assertEquals("last_call_summary", facts[0].key)
         assertEquals("youtube_niche", facts[1].key)
+    }
+
+    @Test
+    fun `gemini model resolver selects highest active flash model and skips live or tts models`() {
+        val modelsJson = """
+            {
+              "models": [
+                {
+                  "name": "models/gemini-3.8-live",
+                  "supportedGenerationMethods": ["bidiGenerateContent"]
+                },
+                {
+                  "name": "models/gemini-3.8-flash-tts",
+                  "supportedGenerationMethods": ["generateContent"]
+                },
+                {
+                  "name": "models/gemini-3.5-flash-lite",
+                  "supportedGenerationMethods": ["generateContent"]
+                },
+                {
+                  "name": "models/gemini-3.8-flash",
+                  "supportedGenerationMethods": ["generateContent"]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val best = GeminiModelResolver.parseBestFlashModelFromList(modelsJson)
+        assertEquals("gemini-3.8-flash", best)
+        assertTrue(GeminiModelResolver.endpointFor(best!!).endsWith("/models/gemini-3.8-flash:generateContent"))
+    }
+
+    @Test
+    fun `trend radar service parses grounded creator trends cleanly`() {
+        val rawTrendJson = """
+            {
+              "candidates": [
+                {
+                  "content": {
+                    "parts": [
+                      {
+                        "text": "```json\n{\"trendSummaryBn\":\"২ডি ফানি কার্টুন শর্টসে মজার সাউন্ড ও ৩ সেকেন্ডের টুইস্ট এখন খুব চলছে।\",\"bestTimingBn\":\"বিকেল ৫টা - রাত ৯টা\",\"ideas\":[{\"topicTitleBn\":\"মশার সাথে সিংহের মজার লড়াই\",\"platformFit\":\"সব প্ল্যাটফর্ম\",\"hookIdeaBn\":\"প্রথম ১ সেকেন্ডেই মশার বড় কামড় দেখান\",\"whyTrendingBn\":\"সংলাপবিহীন কমেডি গ্লোবাল দর্শক বেশি দেখে\",\"competitionLevelBn\":\"মাঝারি\",\"viralTags\":[\"#cartoon\",\"shorts\"]}]}\n```"
+                      }
+                    ]
+                  },
+                  "groundingMetadata": {
+                    "groundingChunks": [
+                      { "web": { "title": "YouTube Trends", "uri": "https://example.com/trends" } }
+                    ]
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = TrendRadarService.parseTrendResponse(
+            rawResponse = rawTrendJson,
+            nicheQuery = "২ডি কার্টুন",
+            region = TrendRegion.GLOBAL,
+            platformFilter = TrendPlatformFilter.ALL
+        )
+        assertNotNull(parsed)
+        assertEquals(1, parsed!!.ideas.size)
+        assertEquals("মশার সাথে সিংহের মজার লড়াই", parsed.ideas.first().topicTitleBn)
+        assertTrue(parsed.ideas.first().viralTags.contains("#shorts"))
+        assertEquals(listOf("YouTube Trends"), parsed.sources)
     }
 }

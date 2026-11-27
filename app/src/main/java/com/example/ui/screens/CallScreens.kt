@@ -93,6 +93,19 @@ fun AudioCallScreen(
     onEndCall: () -> Unit
 ) {
     BackHandler { onEndCall() }
+    val context = LocalContext.current
+    val screenShareLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == Activity.RESULT_OK && res.data != null) {
+            val intent = Intent(context, CallForegroundService::class.java).apply {
+                action = CallForegroundService.ACTION_START_SCREEN_SHARE
+                putExtra(CallForegroundService.EXTRA_PROJECTION_CODE, res.resultCode)
+                putExtra(CallForegroundService.EXTRA_PROJECTION_DATA, res.data)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+    }
 
     AyeshaBackground {
         Column(
@@ -131,6 +144,10 @@ fun AudioCallScreen(
                         else -> AmberWarning
                     }
                 )
+                if (callState.isScreenSharing) {
+                    Spacer(Modifier.height(6.dp))
+                    StatusBadge(label = "স্ক্রিন শেয়ার চলছে", color = AmberWarning)
+                }
             }
 
             // Center Reactive Orb + Active Task / Confirmation / Error
@@ -195,6 +212,26 @@ fun AudioCallScreen(
                     activeColor = TealSuccess,
                     testTag = "call_audio_route_button",
                     onClick = onCycleAudioRoute
+                )
+
+                CallCircleButton(
+                    icon = if (callState.isScreenSharing) Icons.Default.StopScreenShare else Icons.Default.PresentToAll,
+                    label = if (callState.isScreenSharing) "শেয়ার বন্ধ" else "স্ক্রিন",
+                    active = callState.isScreenSharing,
+                    activeColor = TealSuccess,
+                    testTag = "audio_screen_share",
+                    onClick = {
+                        if (callState.isScreenSharing) {
+                            context.startService(
+                                Intent(context, CallForegroundService::class.java).setAction(
+                                    CallForegroundService.ACTION_STOP_SCREEN_SHARE
+                                )
+                            )
+                        } else {
+                            val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                            screenShareLauncher.launch(mpm.createScreenCaptureIntent())
+                        }
+                    }
                 )
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

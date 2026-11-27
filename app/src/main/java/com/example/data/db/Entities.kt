@@ -50,3 +50,19 @@ data class BlockedAppEntity(
     val displayName: String,
     val isDefaultBlocked: Boolean = false
 )
+
+@Entity(tableName = "creator_audits")
+data class CreatorAuditEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val timestamp: Long = System.currentTimeMillis(),
+    val source: String, // "VIDEO_DOCTOR", "STUDIO_CALL", "TREND_CHECK"
+    val platform: String,
+    val videoOrTopic: String,
+    val categoryBn: String = "",
+    val viralScore: Int = -1,
+    val viewsCount: Long = -1L,
+    val ctrPercent: Float = -1f,
+    val retentionPercent: Float = -1f,
+    val problemSummaryBn: String = "",
+    val actionTakenBn: String = ""
+)

@@ -3,6 +3,7 @@ package com.example.data
 import com.example.data.db.AyeshaDatabase
 import com.example.data.db.BlockedAppEntity
 import com.example.data.db.CallHistoryEntity
+import com.example.data.db.CreatorAuditEntity
 import com.example.data.db.CustomCharacterEntity
 import com.example.data.db.MemoryEntity
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,7 @@ class AyeshaRepository(
         db.customCharacterDao().observeAllCharacters()
     val callHistory: Flow<List<CallHistoryEntity>> = db.callHistoryDao().observeAllHistory()
     val blockedApps: Flow<List<BlockedAppEntity>> = db.blockedAppDao().observeAll()
+    val creatorAudits: Flow<List<CreatorAuditEntity>> = db.creatorAuditDao().observeAllAudits()
 
     suspend fun ensureDefaultBlockedAppsSeeded() {
         if (db.blockedAppDao().getAll().isEmpty()) {
@@ -152,12 +154,27 @@ class AyeshaRepository(
         db.callHistoryDao().deleteAll()
     }
 
+    suspend fun insertCreatorAudit(audit: CreatorAuditEntity): Long =
+        db.creatorAuditDao().insert(audit)
+
+    suspend fun getRecentCreatorAudits(limit: Int = 10): List<CreatorAuditEntity> =
+        db.creatorAuditDao().getRecentAudits(limit.coerceIn(1, 30))
+
+    suspend fun deleteCreatorAudit(id: Long) {
+        db.creatorAuditDao().deleteById(id)
+    }
+
+    suspend fun deleteAllCreatorAudits() {
+        db.creatorAuditDao().deleteAll()
+    }
+
     suspend fun deleteAllAppData() {
         keystoreManager.clearApiKey()
         db.memoryDao().deleteAll()
         db.customCharacterDao().deleteAll()
         db.callHistoryDao().deleteAll()
         db.blockedAppDao().deleteAll()
+        db.creatorAuditDao().deleteAll()
         settingsRepository.resetAll()
     }
 

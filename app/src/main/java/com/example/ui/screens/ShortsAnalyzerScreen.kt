@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.db.CreatorAuditEntity
 import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
 import com.example.ui.components.StatusBadge
@@ -68,14 +69,21 @@ import com.example.ui.theme.TealSuccess
 import com.example.video.ShortsAnalyzerUiState
 import com.example.video.ShortsOutputLanguage
 import com.example.video.ShortsPlatform
+import com.example.video.ShortsSubTab
+import com.example.video.TrendPlatformFilter
+import com.example.video.TrendRadarUiState
+import com.example.video.TrendRegion
 import com.example.video.YouTubeLaunchHelper
 import kotlinx.coroutines.launch
 
 @Composable
 fun ShortsAnalyzerScreen(
     uiState: ShortsAnalyzerUiState,
+    trendState: TrendRadarUiState,
+    creatorAudits: List<CreatorAuditEntity>,
     isKeyVerified: Boolean,
     isPhoneControlReady: Boolean,
+    onSelectSubTab: (ShortsSubTab) -> Unit,
     onVideoPicked: (Uri) -> Unit,
     onSelectLanguage: (ShortsOutputLanguage) -> Unit,
     onCreatorNoteChange: (String) -> Unit,
@@ -84,6 +92,12 @@ fun ShortsAnalyzerScreen(
     onSelectTitleOption: (String) -> Unit,
     onTitleEdited: (String) -> Unit,
     onDescriptionEdited: (String) -> Unit,
+    onTrendNicheChange: (String) -> Unit,
+    onTrendRegionChange: (TrendRegion) -> Unit,
+    onTrendPlatformChange: (TrendPlatformFilter) -> Unit,
+    onFetchTrends: (String?) -> Unit,
+    onDeleteCreatorAudit: (Long) -> Unit,
+    onDeleteAllCreatorAudits: () -> Unit,
     onStartVoiceAssistCall: () -> Unit,
     onOpenPhoneControlSettings: () -> Unit,
     onOpenConnectionSettings: () -> Unit,
@@ -128,20 +142,40 @@ fun ShortsAnalyzerScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "শর্টস ও রিলস স্টুডিও",
+                            text = "শর্টস ও ক্রিয়েটর কোচ",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "এক ভিডিও থেকে YouTube Shorts, FB Reels ও TikTok-এর টাইটেল ও হ্যাশট্যাগ",
+                            text = "ভিডিও ডক্টর, লাইভ ট্রেন্ড রাডার, গ্রোথ লগ ও ৩ প্ল্যাটফর্ম প্যাক",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     StatusBadge(
-                        label = "৩ প্ল্যাটফর্ম",
+                        label = "vidIQ কোচ",
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+
+                // 3-SubTab Switcher (Video Doctor | Trend Radar | Growth Log)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(ShortsSubTab.entries) { _, subTab ->
+                        val selected = uiState.activeSubTab == subTab
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onSelectSubTab(subTab) },
+                            label = { Text(subTab.titleBn) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                selectedLabelColor = MaterialTheme.colorScheme.onBackground
+                            ),
+                            modifier = Modifier.testTag("shorts_subtab_${subTab.id}")
+                        )
+                    }
                 }
 
                 // API Key gate if missing
@@ -170,6 +204,33 @@ fun ShortsAnalyzerScreen(
                         }
                     }
                 }
+
+                when (uiState.activeSubTab) {
+                    ShortsSubTab.TRENDS -> {
+                        TrendRadarTabContent(
+                            uiState = trendState,
+                            detectedNicheHint = uiState.result?.diagnostics?.detectedCategoryBn.orEmpty(),
+                            isKeyVerified = isKeyVerified,
+                            onNicheChange = onTrendNicheChange,
+                            onSelectRegion = onTrendRegionChange,
+                            onSelectPlatformFilter = onTrendPlatformChange,
+                            onFetchTrends = { onFetchTrends(null) },
+                            onStartCoachCall = onStartVoiceAssistCall,
+                            onOpenConnectionSettings = onOpenConnectionSettings,
+                            onShowMessage = { showToastMsg(it) }
+                        )
+                    }
+
+                    ShortsSubTab.GROWTH_LOG -> {
+                        CreatorGrowthLogTabContent(
+                            audits = creatorAudits,
+                            onDeleteAudit = onDeleteCreatorAudit,
+                            onDeleteAllAudits = onDeleteAllCreatorAudits,
+                            onStartCoachCall = onStartVoiceAssistCall
+                        )
+                    }
+
+                    ShortsSubTab.DOCTOR -> {
 
                 // Step 1: Video Picker & Options Card
                 AyeshaCard(highlightBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) {
@@ -326,11 +387,23 @@ fun ShortsAnalyzerScreen(
                     }
                 }
 
-                // Step 2: 3-Platform Pack Result + Direct Actions
+                // Step 2: Video Doctor Diagnostics + 3-Platform Pack Result
                 val result = uiState.result
                 if (result != null) {
                     val activePlatform = result.activePlatform
                     val activePack = result.activePack
+
+                    result.diagnostics?.let { diag ->
+                        VideoDoctorDiagnosticsCard(
+                            diagnostics = diag,
+                            onCheckTrendsForNiche = { niche ->
+                                onSelectSubTab(ShortsSubTab.TRENDS)
+                                onTrendNicheChange(niche)
+                                onFetchTrends(niche)
+                            },
+                            onShowMessage = { showToastMsg(it) }
+                        )
+                    }
 
                     AyeshaCard(highlightBorder = TealSuccess.copy(alpha = 0.55f)) {
                         Row(
@@ -682,6 +755,8 @@ fun ShortsAnalyzerScreen(
                                 }
                             }
                         }
+                    }
+                }
                     }
                 }
 

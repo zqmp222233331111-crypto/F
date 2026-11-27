@@ -9,10 +9,12 @@ import com.example.control.PhoneControlCoordinator
 import com.example.data.AyeshaRepository
 import com.example.data.KeystoreManager
 import com.example.data.SettingsRepository
+import com.example.data.db.CreatorAuditEntity
 import com.example.persona.AyeshaMode
 import com.example.persona.SystemInstructionBuilder
 import com.example.persona.VoiceCatalog
 import com.example.video.LatestShortsDraftStore
+import com.example.video.TrendRadarService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +61,8 @@ class LiveSessionManager(
     private val phoneControlCoordinator: PhoneControlCoordinator,
     private val latestShortsDraftStore: LatestShortsDraftStore,
     private val liveWebSearchService: LiveWebSearchService,
-    private val callAutoMemorySummarizer: CallAutoMemorySummarizer
+    private val callAutoMemorySummarizer: CallAutoMemorySummarizer,
+    private val trendRadarService: TrendRadarService
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -283,9 +286,81 @@ class LiveSessionManager(
                         "hashtags" to draft.hashtags.joinToString(" "),
                         "visual_summary" to draft.visualSummaryBn,
                         "audio_summary" to draft.audioSummaryBn,
+                        "diagnostics" to draft.diagnostics?.let { diag ->
+                            mapOf(
+                                "detected_category" to diag.detectedCategoryBn,
+                                "audience_scope" to diag.targetAudienceScopeBn,
+                                "viral_score" to diag.viralScore,
+                                "hook_score" to diag.hookScore,
+                                "pacing_score" to diag.pacingScore,
+                                "weaknesses" to diag.weaknessesBn,
+                                "rescue_fixes" to diag.rescueFixesBn,
+                                "thumbnail_text" to diag.thumbnailTextBn,
+                                "pinned_comment" to diag.pinnedCommentBn
+                            )
+                        },
                         "platforms" to platformMaps
                     )
                 }
+            }
+            "get_trending_creator_ideas" -> {
+                val niche = args["niche"]?.toString().orEmpty()
+                val platform = args["platform"]?.toString().orEmpty()
+                val apiKey = keystoreManager.getApiKey().orEmpty()
+                trendRadarService.fetchLiveTrendSummaryForCall(apiKey, niche, platform)
+            }
+            "save_creator_audit" -> {
+                val platform = args["platform"]?.toString()?.trim().orEmpty().ifBlank { "YouTube Studio" }
+                val videoTitle = args["video_title"]?.toString()?.trim().orEmpty().ifBlank { "ভিডিও অডিট" }
+                val category = args["category"]?.toString()?.trim().orEmpty()
+                val viralScore = (args["viral_score"] as? Number)?.toInt() ?: -1
+                val viewsCount = (args["views_count"] as? Number)?.toLong() ?: -1L
+                val ctrPercent = (args["ctr_percent"] as? Number)?.toFloat() ?: -1f
+                val retentionPercent = (args["retention_percent"] as? Number)?.toFloat() ?: -1f
+                val problemSummary = args["problem_summary"]?.toString()?.trim().orEmpty()
+                val actionTaken = args["action_taken"]?.toString()?.trim().orEmpty()
+                val id = repository.insertCreatorAudit(
+                    CreatorAuditEntity(
+                        source = "STUDIO_CALL",
+                        platform = platform,
+                        videoOrTopic = videoTitle,
+                        categoryBn = category,
+                        viralScore = viralScore,
+                        viewsCount = viewsCount,
+                        ctrPercent = ctrPercent,
+                        retentionPercent = retentionPercent,
+                        problemSummaryBn = problemSummary,
+                        actionTakenBn = actionTaken
+                    )
+                )
+                mapOf(
+                    "success" to true,
+                    "audit_id" to id,
+                    "message" to "ক্রিয়েটর গ্রোথ লগে অডিট ও অ্যাকশন সংরক্ষণ করা হয়েছে।"
+                )
+            }
+            "get_creator_audit_history" -> {
+                val limit = ((args["limit"] as? Number)?.toInt() ?: 8).coerceIn(1, 20)
+                val audits = repository.getRecentCreatorAudits(limit)
+                mapOf(
+                    "success" to true,
+                    "count" to audits.size,
+                    "audits" to audits.map { a ->
+                        mapOf(
+                            "source" to a.source,
+                            "platform" to a.platform,
+                            "video_or_topic" to a.videoOrTopic,
+                            "category" to a.categoryBn,
+                            "viral_score" to a.viralScore,
+                            "views_count" to a.viewsCount,
+                            "ctr_percent" to a.ctrPercent,
+                            "retention_percent" to a.retentionPercent,
+                            "problem_summary" to a.problemSummaryBn,
+                            "action_taken" to a.actionTakenBn,
+                            "timestamp" to a.timestamp
+                        )
+                    }
+                )
             }
             else -> phoneControlCoordinator.executeTool(name, args)
         }

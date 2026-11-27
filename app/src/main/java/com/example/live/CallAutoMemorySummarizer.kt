@@ -1,5 +1,6 @@
 package com.example.live
 
+import com.example.data.GeminiModelResolver
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -37,26 +38,44 @@ class CallAutoMemorySummarizer(
         }
 
         val requestJson = buildSummarizerRequestJson(trimmedTranscript, existingKeys)
-        val request = Request.Builder()
-            .url(GENERATE_ENDPOINT)
-            .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))
-            .addHeader("x-goog-api-key", trimmedKey)
-            .build()
+
+        fun tryModel(modelId: String): Pair<Int, String> {
+            val request = Request.Builder()
+                .url(GeminiModelResolver.endpointFor(modelId))
+                .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))
+                .addHeader("x-goog-api-key", trimmedKey)
+                .build()
+            return httpClient.newCall(request).execute().use { resp ->
+                resp.code to resp.body?.string().orEmpty()
+            }
+        }
 
         return@withContext try {
-            httpClient.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@use emptyList()
-                val raw = resp.body?.string().orEmpty()
-                parseSummarizerResponse(raw)
+            val tried = linkedSetOf<String>()
+            for (modelId in GeminiModelResolver.candidateModels()) {
+                tried.add(modelId)
+                val (code, raw) = tryModel(modelId)
+                if (code in 200..299) {
+                    GeminiModelResolver.markWorking(modelId)
+                    return@withContext parseSummarizerResponse(raw)
+                }
+                if (code != 404) return@withContext emptyList()
             }
+            val discovered = GeminiModelResolver.discoverActiveFlashModel(httpClient, trimmedKey)
+            if (!discovered.isNullOrBlank() && discovered !in tried) {
+                val (code, raw) = tryModel(discovered)
+                if (code in 200..299) {
+                    GeminiModelResolver.markWorking(discovered)
+                    return@withContext parseSummarizerResponse(raw)
+                }
+            }
+            emptyList()
         } catch (_: Exception) {
             emptyList()
         }
     }
 
     companion object {
-        const val GENERATE_ENDPOINT =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val moshi: Moshi = Moshi.Builder().build()
         private val mapAdapter = moshi.adapter<Map<String, Any?>>(
