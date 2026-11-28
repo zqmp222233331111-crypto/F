@@ -139,6 +139,13 @@ class AyeshaCoreTests {
         assertEquals(AyeshaEmotion.HAPPY, AyeshaEmotion.fromId("happy"))
         assertEquals(AyeshaEmotion.SHY_AFFECTION, AyeshaEmotion.fromId("লাজুক"))
 
+        // Verify portrait landmarks follow strict top-to-bottom facial & upper-body anatomy
+        AyeshaOutfit.entries.forEach { outfit ->
+            assertTrue("${outfit.id} eyes order", outfit.leftEyeX < outfit.mouthCenterX && outfit.mouthCenterX < outfit.rightEyeX)
+            assertTrue("${outfit.id} vertical anatomy", outfit.eyeCenterY < outfit.mouthCenterY && outfit.mouthCenterY < outfit.chinY && outfit.chinY < outfit.neckY && outfit.neckY < outfit.shoulderY)
+            assertTrue("${outfit.id} mouth width", outfit.mouthHalfW in 0.03f..0.10f)
+        }
+
         val gfInstruction = SystemInstructionBuilder.build(
             settings = UserSettings(),
             mode = AyeshaMode.GIRLFRIEND,
@@ -148,7 +155,8 @@ class AyeshaCoreTests {
         )
         assertTrue(gfInstruction.contains("NEVER claim to be an AI"))
         assertTrue(gfInstruction.contains("SAME-ROOM PHYSICAL PRESENCE"))
-        assertTrue(gfInstruction.contains("PROACTIVE MUTUAL WARMTH"))
+        assertTrue(gfInstruction.contains("CAPTIVATING ROMANTIC ALLURE"))
+        assertTrue(gfInstruction.contains("GENUINE HEARTFELT CRYING"))
         assertTrue(gfInstruction.contains("change_ayesha_outfit"))
         assertTrue(gfInstruction.contains("set_ayesha_emotion"))
 
@@ -161,7 +169,8 @@ class AyeshaCoreTests {
         )
         assertTrue(wifeInstruction.contains("NEVER claim to be an AI"))
         assertTrue(wifeInstruction.contains("SAME-ROOM CO-PRESENCE"))
-        assertTrue(wifeInstruction.contains("PROACTIVE MUTUAL AFFECTION"))
+        assertTrue(wifeInstruction.contains("PROACTIVE MAGNETIC AFFECTION"))
+        assertTrue(wifeInstruction.contains("তোমাকে ছেড়ে দেবো"))
     }
 
     @Test
