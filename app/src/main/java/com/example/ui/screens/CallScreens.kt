@@ -14,6 +14,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -39,10 +41,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -56,9 +65,9 @@ import com.example.live.AudioRoute
 import com.example.live.CallForegroundService
 import com.example.live.LiveCallStatus
 import com.example.live.LiveCallUiState
-import com.example.ui.components.AyeshaBackground
 import com.example.ui.components.AyeshaCard
 import com.example.ui.components.AyeshaIcons
+import com.example.ui.components.AyeshaLivingCharacter
 import com.example.ui.components.AyeshaOrb
 import com.example.ui.components.OrbVisualState
 import com.example.ui.components.StatusBadge
@@ -95,7 +104,62 @@ fun AudioCallScreen(
         }
     }
 
-    AyeshaBackground {
+    val topScrim = remember {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xCC060410), Color(0x66060410), Color.Transparent)
+        )
+    }
+    val bottomScrim = remember {
+        Brush.verticalGradient(
+            colors = listOf(Color.Transparent, Color(0x99060410), Color(0xEE060410))
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF060410))
+    ) {
+        // 1. Large living character background (default white-black floral dress, switches live on request)
+        AyeshaLivingCharacter(
+            outfit = callState.currentOutfit,
+            emotion = callState.currentEmotion,
+            speakerAmplitude = callState.speakerAmplitude,
+            isSpeaking = callState.status == LiveCallStatus.SPEAKING,
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("audio_call_character")
+        )
+
+        // Soft top and bottom readability scrims
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp)
+                .align(Alignment.TopCenter)
+                .background(topScrim)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(250.dp)
+                .align(Alignment.BottomCenter)
+                .background(bottomScrim)
+        )
+
+        // 2. Center glowing orb kept directly over character view as a translucent luminous overlay
+        AyeshaOrb(
+            state = OrbVisualState.fromCallStatus(callState.status),
+            amplitude = callState.orbAmplitude,
+            size = 215.dp,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = 66.dp)
+                .graphicsLayer { alpha = 0.56f }
+                .testTag("audio_call_orb")
+        )
+
+        // 3. Preserved Top Status Badges & Bottom Call Controls
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -104,7 +168,6 @@ fun AudioCallScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Status & Timer
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = callState.characterName,
@@ -138,18 +201,10 @@ fun AudioCallScreen(
                 }
             }
 
-            // Center Reactive Orb + Active Task / Confirmation / Error
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                AyeshaOrb(
-                    state = OrbVisualState.fromCallStatus(callState.status),
-                    amplitude = callState.orbAmplitude,
-                    size = 240.dp,
-                    modifier = Modifier.testTag("audio_call_orb")
-                )
-
                 if (callState.errorMessageBn != null) {
                     AyeshaCard(highlightBorder = RoseDanger) {
                         Text(
@@ -166,85 +221,84 @@ fun AudioCallScreen(
                     onStopTask = onStopTask,
                     onResolveConfirmation = onResolveConfirmation
                 )
-            }
 
-            // Bottom Call Controls: Mute, Speaker/Bluetooth, End Call
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CallCircleButton(
-                    icon = if (callState.isMuted) AyeshaIcons.MicOff else AyeshaIcons.Mic,
-                    label = if (callState.isMuted) "আনমিউট" else "মিউট",
-                    active = callState.isMuted,
-                    activeColor = AmberWarning,
-                    testTag = "call_mute_button",
-                    onClick = onToggleMute
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CallCircleButton(
+                        icon = if (callState.isMuted) AyeshaIcons.MicOff else AyeshaIcons.Mic,
+                        label = if (callState.isMuted) "আনমিউট" else "মিউট",
+                        active = callState.isMuted,
+                        activeColor = AmberWarning,
+                        testTag = "call_mute_button",
+                        onClick = onToggleMute
+                    )
 
-                CallCircleButton(
-                    icon = when (callState.audioRoute) {
-                        AudioRoute.SPEAKER -> AyeshaIcons.VolumeUp
-                        AudioRoute.BLUETOOTH -> AyeshaIcons.BluetoothAudio
-                        AudioRoute.EARPIECE -> AyeshaIcons.PhoneInTalk
-                    },
-                    label = when (callState.audioRoute) {
-                        AudioRoute.SPEAKER -> "স্পিকার"
-                        AudioRoute.BLUETOOTH -> "ব্লুটুথ"
-                        AudioRoute.EARPIECE -> "ইয়ারপিস"
-                    },
-                    active = callState.audioRoute != AudioRoute.EARPIECE,
-                    activeColor = TealSuccess,
-                    testTag = "call_audio_route_button",
-                    onClick = onCycleAudioRoute
-                )
+                    CallCircleButton(
+                        icon = when (callState.audioRoute) {
+                            AudioRoute.SPEAKER -> AyeshaIcons.VolumeUp
+                            AudioRoute.BLUETOOTH -> AyeshaIcons.BluetoothAudio
+                            AudioRoute.EARPIECE -> AyeshaIcons.PhoneInTalk
+                        },
+                        label = when (callState.audioRoute) {
+                            AudioRoute.SPEAKER -> "স্পিকার"
+                            AudioRoute.BLUETOOTH -> "ব্লুটুথ"
+                            AudioRoute.EARPIECE -> "ইয়ারপিস"
+                        },
+                        active = callState.audioRoute != AudioRoute.EARPIECE,
+                        activeColor = TealSuccess,
+                        testTag = "call_audio_route_button",
+                        onClick = onCycleAudioRoute
+                    )
 
-                CallCircleButton(
-                    icon = if (callState.isScreenSharing) AyeshaIcons.StopScreenShare else AyeshaIcons.PresentToAll,
-                    label = if (callState.isScreenSharing) "শেয়ার বন্ধ" else "স্ক্রিন",
-                    active = callState.isScreenSharing,
-                    activeColor = TealSuccess,
-                    testTag = "audio_screen_share",
-                    onClick = {
-                        if (callState.isScreenSharing) {
-                            context.startService(
-                                Intent(context, CallForegroundService::class.java).setAction(
-                                    CallForegroundService.ACTION_STOP_SCREEN_SHARE
+                    CallCircleButton(
+                        icon = if (callState.isScreenSharing) AyeshaIcons.StopScreenShare else AyeshaIcons.PresentToAll,
+                        label = if (callState.isScreenSharing) "শেয়ার বন্ধ" else "স্ক্রিন",
+                        active = callState.isScreenSharing,
+                        activeColor = TealSuccess,
+                        testTag = "audio_screen_share",
+                        onClick = {
+                            if (callState.isScreenSharing) {
+                                context.startService(
+                                    Intent(context, CallForegroundService::class.java).setAction(
+                                        CallForegroundService.ACTION_STOP_SCREEN_SHARE
+                                    )
                                 )
-                            )
-                        } else {
-                            val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                            screenShareLauncher.launch(mpm.createScreenCaptureIntent())
+                            } else {
+                                val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                                screenShareLauncher.launch(mpm.createScreenCaptureIntent())
+                            }
                         }
-                    }
-                )
+                    )
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(
-                        onClick = onEndCall,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = RoseDanger,
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .size(64.dp)
-                            .testTag("end_call_button")
-                    ) {
-                        Icon(
-                            imageVector = AyeshaIcons.CallEnd,
-                            contentDescription = "কল কাটুন",
-                            modifier = Modifier.size(30.dp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = onEndCall,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = RoseDanger,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .size(64.dp)
+                                .testTag("end_call_button")
+                        ) {
+                            Icon(
+                                imageVector = AyeshaIcons.CallEnd,
+                                contentDescription = "কল কাটুন",
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "শেষ করুন",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "শেষ করুন",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
                 }
             }
         }
@@ -265,6 +319,7 @@ fun VideoCallScreen(
 ) {
     BackHandler { onEndCall() }
     val context = LocalContext.current
+    var isCharacterExpanded by remember { mutableStateOf(false) }
 
     val screenShareLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -279,37 +334,68 @@ fun VideoCallScreen(
         }
     }
 
+    // Keep CameraX mounted cleanly across PiP <-> Fullscreen swaps without unbinding frames
+    val userCameraView = remember(callState.isCameraOn, callState.isFrontCamera, callState.isScreenSharing) {
+        movableContentOf { compact: Boolean ->
+            if (callState.isCameraOn) {
+                CameraXPreviewLayer(
+                    isFrontCamera = callState.isFrontCamera,
+                    onFrame = onSubmitCameraFrame,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0A0716)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = AyeshaIcons.VideocamOff,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(if (compact) 26.dp else 44.dp)
+                        )
+                        Text(
+                            text = if (callState.isScreenSharing) "স্ক্রিন শেয়ার চলছে"
+                            else if (compact) "ক্যামেরা বন্ধ"
+                            else "ক্যামেরা বন্ধ আছে",
+                            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(NavyDeep)
     ) {
-        if (callState.isCameraOn) {
-            CameraXPreviewLayer(
-                isFrontCamera = callState.isFrontCamera,
-                onFrame = onSubmitCameraFrame,
-                modifier = Modifier.fillMaxSize()
+        // Main full-screen view: either user's camera or expanded living Ayesha character
+        if (isCharacterExpanded) {
+            AyeshaLivingCharacter(
+                outfit = callState.currentOutfit,
+                emotion = callState.currentEmotion,
+                speakerAmplitude = callState.speakerAmplitude,
+                isSpeaking = callState.status == LiveCallStatus.SPEAKING,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("video_expanded_character")
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                AyeshaOrb(
-                    state = OrbVisualState.fromCallStatus(callState.status),
-                    amplitude = callState.orbAmplitude,
-                    size = 180.dp
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = if (callState.isScreenSharing) "স্ক্রিন শেয়ার চলছে" else "ক্যামেরা বন্ধ আছে",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
+            userCameraView(false)
         }
 
-        // Top HUD: Timer + Screen Share Indicator (left) & Mini Ayesha Orb (right)
+        // Top HUD: Left = Status badge + moved Orb | Right = WhatsApp/imo PiP preview card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -319,10 +405,10 @@ fun VideoCallScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = NavyDeep.copy(alpha = 0.72f)
+                    color = NavyDeep.copy(alpha = 0.76f)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
                         Text(
@@ -336,6 +422,23 @@ fun VideoCallScreen(
                         )
                     }
                 }
+
+                // Pink-purple Orb moved to LEFT side
+                Surface(
+                    shape = CircleShape,
+                    color = NavyDeep.copy(alpha = 0.62f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.52f))
+                ) {
+                    AyeshaOrb(
+                        state = OrbVisualState.fromCallStatus(callState.status),
+                        amplitude = callState.orbAmplitude,
+                        size = 76.dp,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .testTag("video_left_orb")
+                    )
+                }
+
                 if (callState.isScreenSharing) {
                     StatusBadge(label = "স্ক্রিন শেয়ার চলছে", color = AmberWarning)
                 }
@@ -344,21 +447,34 @@ fun VideoCallScreen(
                 }
             }
 
+            // WhatsApp/imo-style PiP corner frame on the RIGHT (tap to expand / swap!)
             Surface(
-                shape = CircleShape,
-                color = NavyDeep.copy(alpha = 0.65f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF0A0716),
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)),
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .width(114.dp)
+                    .height(164.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable { isCharacterExpanded = !isCharacterExpanded }
+                    .testTag("video_pip_swap_card")
             ) {
-                AyeshaOrb(
-                    state = OrbVisualState.fromCallStatus(callState.status),
-                    amplitude = callState.orbAmplitude,
-                    size = 86.dp,
-                    modifier = Modifier.padding(4.dp)
-                )
+                if (isCharacterExpanded) {
+                    userCameraView(true)
+                } else {
+                    AyeshaLivingCharacter(
+                        outfit = callState.currentOutfit,
+                        emotion = callState.currentEmotion,
+                        speakerAmplitude = callState.speakerAmplitude,
+                        isSpeaking = callState.status == LiveCallStatus.SPEAKING,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
-        // Bottom Controls + Task Cards
+        // Bottom Controls + Task Cards (unchanged)
         Column(
             modifier = Modifier
                 .fillMaxWidth()

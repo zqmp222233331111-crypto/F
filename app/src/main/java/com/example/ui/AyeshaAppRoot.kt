@@ -122,6 +122,16 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
         }
     }
 
+    val shortsVideoCallLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true &&
+            results[Manifest.permission.CAMERA] == true
+        ) {
+            viewModel.startVideoCall()
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.refreshPermissions(context)
     }
@@ -406,9 +416,9 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                             isPhoneControlReady = settings.phoneControlMasterEnabled && permissions.isAccessibilityEnabled,
                                             onSelectSubTab = { tab -> viewModel.selectShortsSubTab(tab) },
                                             onVideoPicked = { uri -> viewModel.onShortsVideoPicked(uri) },
+                                            onClearPendingVideo = { viewModel.clearPendingShortsVideo() },
                                             onSelectLanguage = { lang -> viewModel.setShortsLanguage(lang) },
-                                            onCreatorNoteChange = { note -> viewModel.setShortsCreatorNote(note) },
-                                            onAnalyzeClick = { viewModel.analyzeSelectedShortsVideo() },
+                                            onSendChatMessage = { msg -> viewModel.sendCreatorChatMessage(msg) },
                                             onSelectPlatform = { platform -> viewModel.selectShortsPlatform(platform) },
                                             onSelectTitleOption = { title -> viewModel.selectShortsTitle(title) },
                                             onTitleEdited = { title -> viewModel.updateShortsTitle(title) },
@@ -428,6 +438,26 @@ fun AyeshaAppRoot(viewModel: AyeshaViewModel) {
                                                     viewModel.startAudioCall()
                                                 } else {
                                                     shortsCallMicLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                }
+                                            },
+                                            onStartVideoAssistCall = {
+                                                val micOk = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                val camOk = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.CAMERA
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                if (micOk && camOk) {
+                                                    viewModel.startVideoCall()
+                                                } else {
+                                                    shortsVideoCallLauncher.launch(
+                                                        arrayOf(
+                                                            Manifest.permission.RECORD_AUDIO,
+                                                            Manifest.permission.CAMERA
+                                                        )
+                                                    )
                                                 }
                                             },
                                             onOpenPhoneControlSettings = {

@@ -9,9 +9,13 @@ import com.example.data.db.MemoryEntity
 import com.example.live.CallAutoMemorySummarizer
 import com.example.live.LiveToolDeclarations
 import com.example.live.LiveWebSearchService
+import com.example.persona.AyeshaEmotion
 import com.example.persona.AyeshaMode
+import com.example.persona.AyeshaOutfit
 import com.example.persona.SystemInstructionBuilder
 import com.example.persona.VoiceCatalog
+import com.example.video.CreatorChatMessage
+import com.example.video.CreatorCoachChatService
 import com.example.video.ShortsOutputLanguage
 import com.example.video.ShortsPlatform
 import com.example.video.ShortsVideoAnalyzer
@@ -106,13 +110,15 @@ class AyeshaCoreTests {
     }
 
     @Test
-    fun `live tool declarations include 15 phone tools, 2 memory tools, creator coach tools, and web_search`() {
+    fun `live tool declarations include 15 phone tools, 2 memory tools, character tools, creator coach tools, and web_search`() {
         val toolNames = LiveToolDeclarations.expectedFunctionToolNames(
             includeMemoryTools = true,
             includePhoneControlTools = true
         )
-        assertEquals(22, toolNames.size)
+        assertEquals(24, toolNames.size)
         assertTrue(toolNames.contains("web_search"))
+        assertTrue(toolNames.contains("change_ayesha_outfit"))
+        assertTrue(toolNames.contains("set_ayesha_emotion"))
         assertTrue(toolNames.contains("get_latest_shorts_draft"))
         assertTrue(toolNames.contains("get_trending_creator_ideas"))
         assertTrue(toolNames.contains("save_creator_audit"))
@@ -121,6 +127,41 @@ class AyeshaCoreTests {
         assertTrue(toolNames.contains("delete_memory"))
         assertEquals(15, LiveToolDeclarations.phoneToolNames.size)
         assertTrue(toolNames.containsAll(LiveToolDeclarations.phoneToolNames))
+    }
+
+    @Test
+    fun `character outfit, emotion mapping, and girlfriend-wife immersion rules work cleanly`() {
+        assertEquals(AyeshaOutfit.RED_ROSE, AyeshaOutfit.fromIdOrCycle("লাল ড্রেস পরো", AyeshaOutfit.YELLOW))
+        assertEquals(AyeshaOutfit.BLACK_HEART, AyeshaOutfit.fromIdOrCycle("black heart", AyeshaOutfit.YELLOW))
+        assertEquals(AyeshaOutfit.WHITE_FLORAL, AyeshaOutfit.fromIdOrCycle("next", AyeshaOutfit.RED_ROSE))
+        assertEquals(AyeshaEmotion.POUTING, AyeshaEmotion.fromId("অভিমান"))
+        assertEquals(AyeshaEmotion.TEARY, AyeshaEmotion.fromId("teary"))
+        assertEquals(AyeshaEmotion.HAPPY, AyeshaEmotion.fromId("happy"))
+        assertEquals(AyeshaEmotion.SHY_AFFECTION, AyeshaEmotion.fromId("লাজুক"))
+
+        val gfInstruction = SystemInstructionBuilder.build(
+            settings = UserSettings(),
+            mode = AyeshaMode.GIRLFRIEND,
+            customCharacter = null,
+            memories = emptyList(),
+            effectiveVoice = VoiceCatalog.findByName("Sulafat")
+        )
+        assertTrue(gfInstruction.contains("NEVER claim to be an AI"))
+        assertTrue(gfInstruction.contains("SAME-ROOM PHYSICAL PRESENCE"))
+        assertTrue(gfInstruction.contains("PROACTIVE MUTUAL WARMTH"))
+        assertTrue(gfInstruction.contains("change_ayesha_outfit"))
+        assertTrue(gfInstruction.contains("set_ayesha_emotion"))
+
+        val wifeInstruction = SystemInstructionBuilder.build(
+            settings = UserSettings(),
+            mode = AyeshaMode.WIFE,
+            customCharacter = null,
+            memories = emptyList(),
+            effectiveVoice = VoiceCatalog.findByName("Sulafat")
+        )
+        assertTrue(wifeInstruction.contains("NEVER claim to be an AI"))
+        assertTrue(wifeInstruction.contains("SAME-ROOM CO-PRESENCE"))
+        assertTrue(wifeInstruction.contains("PROACTIVE MUTUAL AFFECTION"))
     }
 
     @Test
@@ -390,5 +431,29 @@ class AyeshaCoreTests {
         assertEquals("Zephyr", VoiceCatalog.findByName("zephyr").name)
         assertEquals("Kore", VoiceCatalog.findByName("Kore").name)
         assertEquals("Sulafat", VoiceCatalog.findByName("Puck").name)
+    }
+
+    @Test
+    fun `spaced description formatting separates paragraphs and hashtags and creator chat parses replies`() {
+        val formatted = ShortsVideoAnalyzer.formatSpacedDescriptionAndTags(
+            rawBody = "প্রথম প্যারা #viral\nদ্বিতীয় লাইন #bangla",
+            hashtags = listOf("#fyp", "#tiktok"),
+            defaultTag = "#fyp"
+        )
+        assertEquals("প্রথম প্যারা\n\nদ্বিতীয় লাইন\n\n#fyp #tiktok #viral #bangla", formatted)
+
+        val chatJson = CreatorCoachChatService.buildChatRequestJson(
+            userMessage = "একটি ভালো হুক দাও",
+            recentMessages = listOf(
+                CreatorChatMessage("1", isUser = true, timestampMillis = 1L, textBn = "হ্যালো")
+            ),
+            latestDraft = null,
+            outputLanguage = ShortsOutputLanguage.BANGLA
+        )
+        assertTrue(chatJson.contains("একটি ভালো হুক দাও"))
+        assertTrue(chatJson.contains("Ayesha"))
+
+        val replyRaw = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"প্রথম ৩ সেকেন্ডে প্রশ্ন দিয়ে শুরু করুন।\"}]}}]}"
+        assertEquals("প্রথম ৩ সেকেন্ডে প্রশ্ন দিয়ে শুরু করুন।", CreatorCoachChatService.parseChatReply(replyRaw))
     }
 }

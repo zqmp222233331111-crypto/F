@@ -43,7 +43,7 @@ enum class ShortsPlatform(
 }
 
 enum class ShortsSubTab(val id: String, val titleBn: String) {
-    DOCTOR("doctor", "ভিডিও ডক্টর"),
+    DOCTOR("doctor", "কোচ চ্যাট"),
     TRENDS("trends", "ট্রেন্ড রাডার"),
     GROWTH_LOG("growth", "গ্রোথ লগ")
 }
@@ -104,6 +104,17 @@ data class ShortsAnalysisResult(
     val hashtags: List<String> get() = activePack.hashtags
 }
 
+data class CreatorChatMessage(
+    val id: String,
+    val isUser: Boolean,
+    val timestampMillis: Long,
+    val textBn: String = "",
+    val attachedVideoName: String? = null,
+    val attachedVideoMeta: String? = null,
+    val analysisResult: ShortsAnalysisResult? = null,
+    val isError: Boolean = false
+)
+
 data class ShortsAnalyzerUiState(
     val activeSubTab: ShortsSubTab = ShortsSubTab.DOCTOR,
     val selectedVideoUri: String? = null,
@@ -113,8 +124,10 @@ data class ShortsAnalyzerUiState(
     val outputLanguage: ShortsOutputLanguage = ShortsOutputLanguage.BANGLA,
     val creatorNote: String = "",
     val isAnalyzing: Boolean = false,
+    val isChatResponding: Boolean = false,
     val progressMessageBn: String = "",
     val errorMessageBn: String? = null,
+    val chatMessages: List<CreatorChatMessage> = emptyList(),
     val result: ShortsAnalysisResult? = null
 )
 

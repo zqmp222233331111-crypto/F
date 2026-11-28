@@ -10,7 +10,9 @@ import com.example.data.AyeshaRepository
 import com.example.data.KeystoreManager
 import com.example.data.SettingsRepository
 import com.example.data.db.CreatorAuditEntity
+import com.example.persona.AyeshaEmotion
 import com.example.persona.AyeshaMode
+import com.example.persona.AyeshaOutfit
 import com.example.persona.SystemInstructionBuilder
 import com.example.persona.VoiceCatalog
 import com.example.video.LatestShortsDraftStore
@@ -44,6 +46,9 @@ data class LiveCallUiState(
     val isFrontCamera: Boolean = true,
     val isScreenSharing: Boolean = false,
     val orbAmplitude: Float = 0f,
+    val speakerAmplitude: Float = 0f,
+    val currentOutfit: AyeshaOutfit = AyeshaOutfit.WHITE_FLORAL,
+    val currentEmotion: AyeshaEmotion = AyeshaEmotion.WARM,
     val modeTitleBn: String = "সহকারী",
     val characterName: String = "আয়শা",
     val errorMessageBn: String? = null
@@ -137,6 +142,12 @@ class LiveSessionManager(
             videoEncoder.resetThrottle()
             synchronized(callTranscriptLines) { callTranscriptLines.clear() }
 
+            val initialOutfit = if (callType == CallType.VIDEO) {
+                AyeshaOutfit.YELLOW
+            } else {
+                AyeshaOutfit.WHITE_FLORAL
+            }
+
             _callState.value = LiveCallUiState(
                 isInCall = true,
                 callType = callType,
@@ -147,6 +158,8 @@ class LiveSessionManager(
                 isCameraOn = (callType == CallType.VIDEO),
                 isFrontCamera = true,
                 isScreenSharing = false,
+                currentOutfit = initialOutfit,
+                currentEmotion = AyeshaEmotion.WARM,
                 modeTitleBn = mode.titleBn,
                 characterName = displayName,
                 errorMessageBn = null
@@ -362,6 +375,27 @@ class LiveSessionManager(
                     }
                 )
             }
+            "change_ayesha_outfit" -> {
+                val requested = args["outfit_id"]?.toString()
+                val current = _callState.value.currentOutfit
+                val nextOutfit = AyeshaOutfit.fromIdOrCycle(requested, current)
+                _callState.update { it.copy(currentOutfit = nextOutfit) }
+                mapOf(
+                    "success" to true,
+                    "outfit_id" to nextOutfit.id,
+                    "outfit_label_bn" to nextOutfit.labelBn,
+                    "message" to "পোশাক পরিবর্তন করে ${nextOutfit.labelBn} পরা হয়েছে। এখন স্ক্রিনে এটাই দেখা যাচ্ছে।"
+                )
+            }
+            "set_ayesha_emotion" -> {
+                val emotion = AyeshaEmotion.fromId(args["emotion"]?.toString())
+                _callState.update { it.copy(currentEmotion = emotion) }
+                mapOf(
+                    "success" to true,
+                    "emotion" to emotion.id,
+                    "emotion_label_bn" to emotion.labelBn
+                )
+            }
             else -> phoneControlCoordinator.executeTool(name, args)
         }
     }
@@ -398,8 +432,8 @@ class LiveSessionManager(
                 val spk = audioEngine.speakerAmplitude.value
                 val combined = maxOf(mic, spk)
                 _callState.update { state ->
-                    if (state.orbAmplitude != combined) {
-                        state.copy(orbAmplitude = combined)
+                    if (state.orbAmplitude != combined || state.speakerAmplitude != spk) {
+                        state.copy(orbAmplitude = combined, speakerAmplitude = spk)
                     } else {
                         state
                     }

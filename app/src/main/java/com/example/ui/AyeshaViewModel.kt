@@ -26,6 +26,8 @@ import com.example.live.LiveCallUiState
 import com.example.persona.AyeshaMode
 import com.example.persona.VoiceCatalog
 import com.example.persona.VoiceOption
+import com.example.video.CreatorChatMessage
+import com.example.video.CreatorChatOutcome
 import com.example.video.ShortsAnalyzeOutcome
 import com.example.video.ShortsAnalyzerUiState
 import com.example.video.ShortsOutputLanguage
@@ -74,6 +76,7 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
     val phoneControlCoordinator = container.phoneControlCoordinator
     private val voiceSamplePlayer = container.voiceSamplePlayer
     private val shortsVideoAnalyzer = container.shortsVideoAnalyzer
+    private val creatorCoachChatService = container.creatorCoachChatService
     private val latestShortsDraftStore = container.latestShortsDraftStore
     private val trendRadarService = container.trendRadarService
 
@@ -129,7 +132,22 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
             latestShortsDraftStore.latestDraft.collect { draft ->
                 if (draft != null) {
                     if (_shortsAnalyzerState.value.result == null) {
-                        _shortsAnalyzerState.update { it.copy(result = draft) }
+                        _shortsAnalyzerState.update { state ->
+                            val seededMessages = if (state.chatMessages.isEmpty()) {
+                                listOf(
+                                    CreatorChatMessage(
+                                        id = "saved_draft_${draft.analyzedAtMillis}",
+                                        isUser = false,
+                                        timestampMillis = draft.analyzedAtMillis,
+                                        textBn = "আগের বিশ্লেষিত ভিডিও (${draft.videoDisplayName}) এর রিপোর্ট ও ৩ প্ল্যাটফর্ম প্যাক নিচে প্রস্তুত আছে। চাইলে ভিডিওটি নিয়ে আরও প্রশ্ন করতে পারেন!",
+                                        analysisResult = draft
+                                    )
+                                )
+                            } else {
+                                state.chatMessages
+                            }
+                            state.copy(result = draft, chatMessages = seededMessages)
+                        }
                     }
                     val category = draft.diagnostics?.detectedCategoryBn.orEmpty()
                     if (_trendRadarState.value.nicheQuery.isBlank() && category.isNotBlank()) {
@@ -513,6 +531,100 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         _shortsAnalyzerState.update { it.copy(creatorNote = note.take(300)) }
     }
 
+    fun clearPendingShortsVideo() {
+        _shortsAnalyzerState.update {
+            it.copy(
+                selectedVideoUri = null,
+                selectedVideoName = "",
+                selectedVideoSizeBytes = 0L,
+                selectedVideoDurationMs = 0L,
+                errorMessageBn = null
+            )
+        }
+    }
+
+    fun sendCreatorChatMessage(rawText: String) {
+        val current = _shortsAnalyzerState.value
+        val trimmed = rawText.trim()
+
+        // If a video is attached, treat message text as note and run full Video Doctor + 3-platform analysis in chat
+        if (current.selectedVideoUri != null) {
+            if (trimmed.isNotBlank()) {
+                _shortsAnalyzerState.update { it.copy(creatorNote = trimmed.take(300)) }
+            }
+            analyzeSelectedShortsVideo()
+            return
+        }
+
+        if (trimmed.isEmpty() || current.isChatResponding || current.isAnalyzing) return
+
+        val apiKey = keystore.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            _shortsAnalyzerState.update {
+                it.copy(errorMessageBn = "প্রথমে যাচাইকৃত Gemini API কী যোগ করুন।")
+            }
+            return
+        }
+
+        val userMsg = CreatorChatMessage(
+            id = "u_${UUID.randomUUID()}",
+            isUser = true,
+            timestampMillis = System.currentTimeMillis(),
+            textBn = trimmed
+        )
+
+        val historyBefore = current.chatMessages
+        _shortsAnalyzerState.update {
+            it.copy(
+                isChatResponding = true,
+                errorMessageBn = null,
+                chatMessages = it.chatMessages + userMsg
+            )
+        }
+
+        viewModelScope.launch {
+            val outcome = creatorCoachChatService.sendMessage(
+                apiKey = apiKey,
+                userMessage = trimmed,
+                recentMessages = historyBefore,
+                latestDraft = _shortsAnalyzerState.value.result ?: latestShortsDraftStore.latestDraft.value,
+                outputLanguage = _shortsAnalyzerState.value.outputLanguage
+            )
+            when (outcome) {
+                is CreatorChatOutcome.Success -> {
+                    val replyMsg = CreatorChatMessage(
+                        id = "a_${UUID.randomUUID()}",
+                        isUser = false,
+                        timestampMillis = System.currentTimeMillis(),
+                        textBn = outcome.replyBn
+                    )
+                    _shortsAnalyzerState.update {
+                        it.copy(
+                            isChatResponding = false,
+                            chatMessages = it.chatMessages + replyMsg
+                        )
+                    }
+                }
+                is CreatorChatOutcome.Failure -> {
+                    val errMsg = CreatorChatMessage(
+                        id = "e_${UUID.randomUUID()}",
+                        isUser = false,
+                        timestampMillis = System.currentTimeMillis(),
+                        textBn = outcome.messageBn,
+                        isError = true
+                    )
+                    _shortsAnalyzerState.update {
+                        it.copy(
+                            isChatResponding = false,
+                            errorMessageBn = outcome.messageBn,
+                            chatMessages = it.chatMessages + errMsg
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun analyzeSelectedShortsVideo() {
         val current = _shortsAnalyzerState.value
         val uriString = current.selectedVideoUri ?: return
@@ -527,12 +639,28 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val parsedUri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return
+        val sizeMb = current.selectedVideoSizeBytes / (1024f * 1024f)
+        val durSec = (current.selectedVideoDurationMs / 1000L).coerceAtLeast(0L)
+        val metaText = buildString {
+            if (durSec > 0) append("${com.example.ui.components.formatDurationBn(durSec)} • ")
+            append("%.1f MB".format(sizeMb))
+        }
+        val userMsg = CreatorChatMessage(
+            id = "uv_${UUID.randomUUID()}",
+            isUser = true,
+            timestampMillis = System.currentTimeMillis(),
+            textBn = current.creatorNote.ifBlank { "এই ভিডিওটি বিশ্লেষণ করে দাও" },
+            attachedVideoName = current.selectedVideoName.ifBlank { "ভিডিও.mp4" },
+            attachedVideoMeta = metaText
+        )
+
         viewModelScope.launch {
             _shortsAnalyzerState.update {
                 it.copy(
                     isAnalyzing = true,
                     progressMessageBn = "প্রস্তুত করা হচ্ছে...",
-                    errorMessageBn = null
+                    errorMessageBn = null,
+                    chatMessages = it.chatMessages + userMsg
                 )
             }
             val outcome = shortsVideoAnalyzer.analyzeVideo(
@@ -565,21 +693,42 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
                             _trendRadarState.update { it.copy(nicheQuery = diag.detectedCategoryBn) }
                         }
                     }
+                    val coachReply = CreatorChatMessage(
+                        id = "av_${UUID.randomUUID()}",
+                        isUser = false,
+                        timestampMillis = System.currentTimeMillis(),
+                        textBn = "আপনার ভিডিওটি বিশ্লেষণ সম্পন্ন হয়েছে! নিচে ভিডিও ডক্টর স্কোর ও ৩ প্ল্যাটফর্মের তৈরি প্যাক দেওয়া হলো—চাইলে আরও প্রশ্ন করতে পারেন।",
+                        analysisResult = outcome.result
+                    )
                     _shortsAnalyzerState.update {
                         it.copy(
                             isAnalyzing = false,
                             progressMessageBn = "",
                             errorMessageBn = null,
-                            result = outcome.result
+                            selectedVideoUri = null,
+                            selectedVideoName = "",
+                            selectedVideoSizeBytes = 0L,
+                            selectedVideoDurationMs = 0L,
+                            creatorNote = "",
+                            result = outcome.result,
+                            chatMessages = it.chatMessages + coachReply
                         )
                     }
                 }
                 is ShortsAnalyzeOutcome.Failure -> {
+                    val errReply = CreatorChatMessage(
+                        id = "ev_${UUID.randomUUID()}",
+                        isUser = false,
+                        timestampMillis = System.currentTimeMillis(),
+                        textBn = outcome.messageBn,
+                        isError = true
+                    )
                     _shortsAnalyzerState.update {
                         it.copy(
                             isAnalyzing = false,
                             progressMessageBn = "",
-                            errorMessageBn = outcome.messageBn
+                            errorMessageBn = outcome.messageBn,
+                            chatMessages = it.chatMessages + errReply
                         )
                     }
                 }
@@ -587,32 +736,41 @@ class AyeshaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun updateLatestChatAnalysisResult(updated: com.example.video.ShortsAnalysisResult?) {
+        if (updated == null) return
+        _shortsAnalyzerState.update { state ->
+            val lastResultIdx = state.chatMessages.indexOfLast { it.analysisResult != null }
+            val updatedMsgs = if (lastResultIdx >= 0) {
+                state.chatMessages.mapIndexed { idx, msg ->
+                    if (idx == lastResultIdx) msg.copy(analysisResult = updated) else msg
+                }
+            } else {
+                state.chatMessages
+            }
+            state.copy(result = updated, chatMessages = updatedMsgs)
+        }
+    }
+
     fun selectShortsPlatform(platform: ShortsPlatform) {
         latestShortsDraftStore.selectPlatform(platform)
-        _shortsAnalyzerState.update { state ->
-            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result?.copy(activePlatform = platform))
-        }
+        val updated = latestShortsDraftStore.latestDraft.value
+            ?: _shortsAnalyzerState.value.result?.copy(activePlatform = platform)
+        updateLatestChatAnalysisResult(updated)
     }
 
     fun selectShortsTitle(title: String) {
         latestShortsDraftStore.updateSelectedTitle(title)
-        _shortsAnalyzerState.update { state ->
-            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
-        }
+        updateLatestChatAnalysisResult(latestShortsDraftStore.latestDraft.value ?: _shortsAnalyzerState.value.result)
     }
 
     fun updateShortsTitle(title: String) {
         latestShortsDraftStore.updateSelectedTitle(title)
-        _shortsAnalyzerState.update { state ->
-            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
-        }
+        updateLatestChatAnalysisResult(latestShortsDraftStore.latestDraft.value ?: _shortsAnalyzerState.value.result)
     }
 
     fun updateShortsDescription(description: String) {
         latestShortsDraftStore.updateDescription(description)
-        _shortsAnalyzerState.update { state ->
-            state.copy(result = latestShortsDraftStore.latestDraft.value ?: state.result)
-        }
+        updateLatestChatAnalysisResult(latestShortsDraftStore.latestDraft.value ?: _shortsAnalyzerState.value.result)
     }
 
     fun refreshPermissions(context: Context) {

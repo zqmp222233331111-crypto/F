@@ -12,6 +12,7 @@ import com.example.live.CallAutoMemorySummarizer
 import com.example.live.LiveSessionManager
 import com.example.live.LiveWebSearchService
 import com.example.live.VoiceSamplePlayer
+import com.example.video.CreatorCoachChatService
 import com.example.video.LatestShortsDraftStore
 import com.example.video.ShortsVideoAnalyzer
 import com.example.video.TrendRadarService
@@ -32,6 +33,7 @@ class AppContainer(context: Context) {
     val phoneControlCoordinator by lazy { PhoneControlCoordinator(appContext, settingsRepository, repository) }
     val latestShortsDraftStore by lazy { LatestShortsDraftStore(appContext) }
     val shortsVideoAnalyzer by lazy(LazyThreadSafetyMode.NONE) { ShortsVideoAnalyzer() }
+    val creatorCoachChatService by lazy(LazyThreadSafetyMode.NONE) { CreatorCoachChatService() }
     val trendRadarService by lazy(LazyThreadSafetyMode.NONE) { TrendRadarService() }
     val liveWebSearchService by lazy(LazyThreadSafetyMode.NONE) { LiveWebSearchService() }
     val callAutoMemorySummarizer by lazy(LazyThreadSafetyMode.NONE) { CallAutoMemorySummarizer() }

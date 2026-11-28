@@ -815,18 +815,18 @@ class ShortsVideoAnalyzer(
                 4. youtube: Object for YouTube Shorts:
                    - titles: 3 catchy, high-CTR SEO YouTube Shorts titles (under 85 chars each)
                    - recommendedTitle: Best single YouTube Shorts title (under 85 chars)
-                   - description: Engaging Shorts description with hook, CTA, and 6-8 hashtags ALWAYS including #shorts #youtubeshorts
-                   - hashtags: List of those 6-8 hashtags (starting with #)
-                5. facebook: Object for Facebook Reels:
-                   - titles: 3 conversational, share-worthy Facebook Reels hook titles
-                   - recommendedTitle: Best Facebook Reels hook title
-                   - description: Warm storytelling Facebook Reels caption with engagement question and 6-8 hashtags ALWAYS including #reels #facebookreels
-                   - hashtags: List of 6-8 Facebook Reels hashtags (starting with #)
-                6. tiktok: Object for TikTok:
-                   - titles: 3 short, punchy, curiosity-driven TikTok hook lines
-                   - recommendedTitle: Best TikTok hook title
-                   - description: Trendy, snappy TikTok caption with 6-8 hashtags ALWAYS including #fyp #tiktok
-                   - hashtags: List of 6-8 TikTok hashtags (starting with #)$noteSection
+                   - description: Neatly formatted multi-paragraph YouTube Shorts description separated by blank lines (\n\n): paragraph 1 = crisp hook/summary, paragraph 2 = short Like/Subscribe CTA, WITHOUT stuffing hashtags inline (put hashtags cleanly in the hashtags array)
+                   - hashtags: List of 6-8 hashtags (starting with #) ALWAYS including #shorts #youtubeshorts
+                5. facebook: Object for Facebook Reels (Facebook Reels has ONE caption field, NOT a separate title or description):
+                   - titles: 3 conversational opening hook lines to start the Facebook Reels caption
+                   - recommendedTitle: Best Facebook Reels opening hook line
+                   - description: Warm, cleanly spaced Facebook Reels caption body + engagement question separated cleanly by blank lines (\n\n), without gluing hashtags onto the text
+                   - hashtags: List of 6-8 Facebook Reels hashtags (starting with #) ALWAYS including #reels #facebookreels
+                6. tiktok: Object for TikTok (TikTok has ONE caption field, NOT a separate title or description):
+                   - titles: 3 short, punchy, curiosity-driven TikTok opening hook lines
+                   - recommendedTitle: Best TikTok opening hook line
+                   - description: Snappy TikTok caption body separated cleanly with blank lines (\n\n), without gluing hashtags onto words
+                   - hashtags: List of 6-8 TikTok hashtags (starting with #) ALWAYS including #fyp #tiktok$noteSection
             """.trimIndent()
 
             fun platformSchema(): Map<String, Any> = mapOf(
@@ -956,14 +956,12 @@ class ShortsVideoAnalyzer(
                 .map { tag -> if (tag.startsWith("#")) tag else "#$tag" }
                 .distinct()
 
-            var description = (block["description"] as? String)?.trim().orEmpty()
-            if (hashtags.isNotEmpty() && !description.contains(defaultTag, ignoreCase = true)) {
-                description = if (description.isNotEmpty()) {
-                    "$description\n\n${hashtags.joinToString(" ")}"
-                } else {
-                    hashtags.joinToString(" ")
-                }
-            }
+            val rawDesc = (block["description"] as? String)?.trim().orEmpty()
+            val description = formatSpacedDescriptionAndTags(
+                rawBody = rawDesc,
+                hashtags = hashtags,
+                defaultTag = defaultTag
+            )
             if (recommended.isBlank() && description.isBlank()) return null
 
             return PlatformPackItem(
@@ -973,6 +971,39 @@ class ShortsVideoAnalyzer(
                 description = description,
                 hashtags = hashtags
             )
+        }
+
+        fun formatSpacedDescriptionAndTags(
+            rawBody: String,
+            hashtags: List<String>,
+            defaultTag: String
+        ): String {
+            // Separate any inline #hashtags from the prose so text and tags never stick together
+            val hashtagRegex = Regex("#[\\p{L}\\p{N}_]+")
+            val inlineTags = hashtagRegex.findAll(rawBody).map { it.value }.toList()
+            val cleanProse = rawBody
+                .replace(hashtagRegex, " ")
+                .lines()
+                .map { line -> line.replace(Regex("\\s+"), " ").trim() }
+                .filter { it.isNotBlank() }
+                .joinToString("\n\n")
+                .trim()
+
+            val combinedTags = (hashtags + inlineTags)
+                .map { it.trim() }
+                .filter { it.startsWith("#") && it.length > 1 }
+                .distinctBy { it.lowercase() }
+                .toMutableList()
+            if (defaultTag.isNotBlank() && combinedTags.none { it.equals(defaultTag, ignoreCase = true) }) {
+                combinedTags.add(0, defaultTag)
+            }
+
+            val tagLine = combinedTags.joinToString(" ")
+            return when {
+                cleanProse.isNotBlank() && tagLine.isNotBlank() -> "$cleanProse\n\n$tagLine"
+                cleanProse.isNotBlank() -> cleanProse
+                else -> tagLine
+            }
         }
 
         @Suppress("UNCHECKED_CAST")

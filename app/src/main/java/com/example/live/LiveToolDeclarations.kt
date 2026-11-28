@@ -24,6 +24,8 @@ object LiveToolDeclarations {
         add("get_trending_creator_ideas")
         add("save_creator_audit")
         add("get_creator_audit_history")
+        add("change_ayesha_outfit")
+        add("set_ayesha_emotion")
         if (includeMemoryTools) {
             add("save_memory")
             add("delete_memory")
@@ -100,6 +102,28 @@ object LiveToolDeclarations {
                     "limit" to prop("INTEGER", "Optional number of recent entries (default 8)")
                 ),
                 required = emptyList()
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "change_ayesha_outfit",
+                description = "Change Ayesha's visible dress/outfit on the live call screen right now when the user asks to wear another dress, dislikes the current outfit, or asks for yellow, white_floral, black_heart, or red_rose.",
+                properties = mapOf(
+                    "outfit_id" to prop("STRING", "One of: yellow, white_floral, black_heart, red_rose, or next")
+                ),
+                required = listOf("outfit_id")
+            )
+        )
+
+        functionDeclarations.put(
+            fn(
+                name = "set_ayesha_emotion",
+                description = "Update Ayesha's live facial expression and body mood on screen to match your vocal emotion: warm, happy, pouting (অভিমান), teary (কান্না-কান্না আবেগ), or shy (লাজুক ভালোবাসা).",
+                properties = mapOf(
+                    "emotion" to prop("STRING", "One of: warm, happy, pouting, teary, shy")
+                ),
+                required = listOf("emotion")
             )
         )
 
